@@ -21,10 +21,7 @@
       flex-wrap: wrap;
       gap: 10px;
     }
-    h1 {
-      margin: 0;
-      font-size: 1.5rem;
-    }
+    h1 { margin: 0; font-size: 1.5rem; }
     #date-container {
       display: flex;
       align-items: center;
@@ -34,15 +31,7 @@
       border-radius: 8px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.1);
     }
-    #date {
-      font-weight: bold;
-      color: #555;
-      font-size: 0.95rem;
-      border: none;
-      outline: none;
-      background: none;
-      cursor: pointer;
-    }
+    #date { font-weight: bold; color: #555; font-size: 0.95rem; border: none; outline: none; background: none; cursor: pointer; }
     #cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -58,18 +47,11 @@
       cursor: pointer;
       transition: 0.2s;
     }
-    .card:hover {
-      transform: scale(1.03);
-    }
-    .details {
-      display: none;
-      font-size: 0.9rem;
-      margin-top: 10px;
-      color: #555;
-    }
-    .card.active .details {
-      display: block;
-    }
+    .card:hover { transform: scale(1.03); }
+    .details { display: none; font-size: 0.9rem; margin-top: 10px; color: #555; }
+    .card.active .details { display: block; }
+    .warning { color: #a33; text-align:center; margin-top:12px; }
+    .small { font-size:0.9rem; color:#666; }
   </style>
 </head>
 <body>
@@ -81,82 +63,109 @@
   </header>
 
   <div id="cards">Loading leave data...</div>
+  <div id="message" class="warning" aria-live="polite"></div>
 
   <script>
-    // 🔴 REPLACE ONLY THE LINK BELOW WITH YOUR GOOGLE SHEET CSV LINK
+    // -------------------------
+    // CONFIG: replace this URL
+    // -------------------------
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
-    // 🔴 END OF AREA TO REPLACE
+    // -------------------------
 
     const dateInput = document.getElementById("date");
     const cardsContainer = document.getElementById("cards");
+    const message = document.getElementById("message");
     let allData = [];
 
-    // ✅ Default date as today, formatted as YYYY-MM-DD
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
+    // default date (today) in YYYY-MM-DD for date input
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
     dateInput.value = todayStr;
 
-    // ✅ Fetch and display data
+    // listen to input changes (works while typing or picking)
+    dateInput.addEventListener('input', renderCards);
+
+    // fetch CSV, parse robustly, then render
     fetch(sheetURL)
-      .then(res => res.text())
-      .then(csv => {
-        const rows = csv.trim().split("\n").map(r => r.split(","));
-        const headers = rows.shift();
-        allData = rows.map(row =>
-          Object.fromEntries(headers.map((h, i) => [h.trim(), row[i] ? row[i].trim() : ""]))
-        );
-        renderCards(); // render default view
+      .then(r => {
+        if (!r.ok) throw new Error("Network response was not ok: " + r.status);
+        return r.text();
+      })
+      .then(csvText => {
+        // parse CSV robustly
+        const rows = parseCSV(csvText);
+        if (!rows || rows.length < 1) {
+          throw new Error("CSV parsing returned no rows.");
+        }
+        const headers = rows[0].map(h => String(h || "").trim());
+        allData = rows.slice(1).map(r => {
+          const obj = {};
+          headers.forEach((h, i) => obj[h || `col${i}`] = r[i] ? String(r[i]).trim() : "");
+          return obj;
+        });
+        console.info("Parsed rows:", allData.length);
+        message.textContent = "";
+        renderCards();
       })
       .catch(err => {
-        cardsContainer.textContent = "Error loading data.";
-        console.error(err);
+        console.error("Failed to load sheet:", err);
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>Error loading data.</p>";
+        message.textContent = "Could not load or parse sheet data. Check the sheet URL and CORS/public access.";
       });
 
-    // ✅ Re-render cards when date changes
-    dateInput.addEventListener("input", renderCards);
-
+    // render cards based on selected date
     function renderCards() {
-      const selectedDate = new Date(dateInput.value);
-      const isToday = dateInput.value === todayStr;
+      const selectedValue = dateInput.value;
+      if (!selectedValue) return;
+      const selectedDate = new Date(selectedValue + "T00:00:00"); // treat as local midnight
+      const isToday = selectedValue === todayStr;
 
       cardsContainer.innerHTML = "";
-
       let visibleCount = 0;
+      let parseIssues = 0;
 
-      allData.forEach(data => {
-        const fromDate = parseDate(data.From);
-        const toDate = parseDate(data.To);
+      allData.forEach((row, idx) => {
+        // Try to find the columns that hold dates. Support typical header names.
+        const fromRaw = row.From ?? row["From Date"] ?? row["Start"] ?? row["Start Date"] ?? row["FromDate"] ?? row["from"] ?? "";
+        const toRaw   = row.To   ?? row["To Date"] ?? row["End"]   ?? row["End Date"]   ?? row["ToDate"]   ?? row["to"]   ?? "";
 
-        // Show all if today's date, else filter
-        const isValid =
-          isToday ||
-          (fromDate && toDate && selectedDate >= fromDate && selectedDate <= toDate);
+        const fromDate = parseDateFlexible(fromRaw);
+        const toDate = parseDateFlexible(toRaw);
 
-        if (isValid) {
+        if (!isToday) {
+          // for non-today selection, we require both fromDate and toDate valid to consider row
+          if (!fromDate || !toDate) {
+            parseIssues++;
+            return; // skip this row
+          }
+        }
+
+        const matches = isToday || (fromDate && toDate && selectedDate >= fromDate && selectedDate <= toDate);
+
+        if (matches) {
+          const name = row.Name ?? row["Employee"] ?? row["Full Name"] ?? row["name"] ?? "Unknown";
+          const team = row.Team ?? row["Department"] ?? row["team"] ?? "";
+          const comments = row.Comments ?? row["Notes"] ?? row["Reason"] ?? "";
+
           const card = document.createElement("div");
           card.className = "card";
           card.innerHTML = `
-            <strong>${data.Name || "Unknown"}</strong><br>
-            <span>${data.Team || ""}</span>
+            <strong>${escapeHtml(name)}</strong><br>
+            <span class="small">${escapeHtml(team)}</span>
             <div class="details">
-              <p><b>From:</b> ${data.From || ""}</p>
-              <p><b>To:</b> ${data.To || ""}</p>
-              <p><b>Comments:</b> ${data.Comments || ""}</p>
+              <p><b>From:</b> ${escapeHtml(fromRaw)}</p>
+              <p><b>To:</b> ${escapeHtml(toRaw)}</p>
+              <p><b>Comments:</b> ${escapeHtml(comments)}</p>
             </div>
           `;
 
-          // One open at a time
           card.addEventListener("click", () => {
-            document.querySelectorAll(".card.active").forEach(c => {
-              if (c !== card) c.classList.remove("active");
-            });
+            document.querySelectorAll(".card.active").forEach(c => { if (c !== card) c.classList.remove("active"); });
             card.classList.toggle("active");
-            if (card.classList.contains("active")) {
-              card.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
+            if (card.classList.contains("active")) card.scrollIntoView({ behavior: "smooth", block: "center" });
           });
 
           cardsContainer.appendChild(card);
@@ -167,20 +176,131 @@
       if (visibleCount === 0) {
         cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
       }
+
+      if (parseIssues > 0) {
+        message.textContent = `${parseIssues} row(s) were skipped due to missing or unrecognized From/To dates.`;
+      } else {
+        message.textContent = "";
+      }
     }
 
-    // ✅ Helper to parse sheet dates
-    function parseDate(str) {
-      if (!str) return null;
-      const parts = str.split(/[-/]/);
-      if (parts.length === 3) {
-        if (parts[0].length === 4) {
-          return new Date(parts[0], parts[1] - 1, parts[2]); // YYYY-MM-DD
+    // ---------- Helper: robust CSV parser (handles quoted fields with commas/newlines) ----------
+    // Simple but reliable parser adapted from common CSV parsing logic.
+    function parseCSV(text) {
+      const rows = [];
+      let i = 0;
+      const len = text.length;
+      let cur = "";
+      let row = [];
+      let inQuotes = false;
+
+      while (i < len) {
+        const ch = text[i];
+
+        if (inQuotes) {
+          if (ch === '"') {
+            if (i + 1 < len && text[i + 1] === '"') {
+              // escaped quote
+              cur += '"';
+              i += 2;
+              continue;
+            } else {
+              inQuotes = false;
+              i++;
+              continue;
+            }
+          } else {
+            cur += ch;
+            i++;
+            continue;
+          }
         } else {
-          return new Date(parts[2], parts[1] - 1, parts[0]); // DD/MM/YYYY
+          if (ch === '"') {
+            inQuotes = true;
+            i++;
+            continue;
+          }
+          if (ch === ',') {
+            row.push(cur);
+            cur = "";
+            i++;
+            continue;
+          }
+          if (ch === '\r') { i++; continue; }
+          if (ch === '\n') {
+            row.push(cur);
+            rows.push(row);
+            row = [];
+            cur = "";
+            i++;
+            continue;
+          }
+          cur += ch;
+          i++;
         }
       }
-      return new Date(str);
+      // push last
+      if (cur !== "" || inQuotes || row.length > 0) {
+        row.push(cur);
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    // ---------- Helper: flexible date parser ----------
+    // Tries multiple formats and returns a Date object (at local midnight) or null.
+    function parseDateFlexible(input) {
+      if (!input) return null;
+      let s = String(input).trim();
+      if (!s) return null;
+
+      // remove surrounding quotes if any
+      if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1).trim();
+
+      // If the value is an ISO-like YYYY-MM-DD or YYYY/MM/DD
+      const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (isoMatch) {
+        const y = Number(isoMatch[1]), m = Number(isoMatch[2]) - 1, d = Number(isoMatch[3]);
+        return new Date(y, m, d);
+      }
+
+      // If DD/MM/YYYY or D/M/YYYY
+      const ddmmyyyy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+      if (ddmmyyyy) {
+        const d = Number(ddmmyyyy[1]), m = Number(ddmmyyyy[2]) - 1, y = Number(ddmmyyyy[3]);
+        return new Date(y, m, d);
+      }
+
+      // If MM/DD/YYYY (common in some locales) - detect by checking month <= 12 and day <=31
+      const mmddyyyy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+      if (mmddyyyy) {
+        // if first part > 12 it's likely DD/MM/YYYY (already handled), otherwise assume MM/DD/YYYY ambiguous cases handled by previous
+        const p1 = Number(mmddyyyy[1]), p2 = Number(mmddyyyy[2]);
+        if (p1 <= 12) {
+          const m = p1 - 1, d = p2, y = Number(mmddyyyy[3]);
+          return new Date(y, m, d);
+        }
+      }
+
+      // Try parsing month names like "21 Oct 2025" or "Oct 21, 2025"
+      const parsed = Date.parse(s);
+      if (!isNaN(parsed)) {
+        const dt = new Date(parsed);
+        return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+      }
+
+      // If we reach here, parsing failed
+      return null;
+    }
+
+    // escape for safe HTML injection
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
   </script>
 </body>
