@@ -89,11 +89,15 @@
 
     const dateInput = document.getElementById("date");
     const cardsContainer = document.getElementById("cards");
-    let allData = []; // store all sheet rows
+    let allData = [];
 
-    // ✅ Set default date to today
+    // ✅ Default date as today, formatted as YYYY-MM-DD
     const today = new Date();
-    dateInput.valueAsDate = today;
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    dateInput.value = todayStr;
 
     // ✅ Fetch and display data
     fetch(sheetURL)
@@ -104,7 +108,7 @@
         allData = rows.map(row =>
           Object.fromEntries(headers.map((h, i) => [h.trim(), row[i] ? row[i].trim() : ""]))
         );
-        renderCards(); // render with today's date
+        renderCards(); // render default view
       })
       .catch(err => {
         cardsContainer.textContent = "Error loading data.";
@@ -112,11 +116,11 @@
       });
 
     // ✅ Re-render cards when date changes
-    dateInput.addEventListener("change", renderCards);
+    dateInput.addEventListener("input", renderCards);
 
     function renderCards() {
       const selectedDate = new Date(dateInput.value);
-      const isToday = selectedDate.toDateString() === today.toDateString();
+      const isToday = dateInput.value === todayStr;
 
       cardsContainer.innerHTML = "";
 
@@ -126,8 +130,7 @@
         const fromDate = parseDate(data.From);
         const toDate = parseDate(data.To);
 
-        // Show all cards if today's date is selected
-        // Otherwise, filter by date range
+        // Show all if today's date, else filter
         const isValid =
           isToday ||
           (fromDate && toDate && selectedDate >= fromDate && selectedDate <= toDate);
@@ -145,7 +148,7 @@
             </div>
           `;
 
-          // Only one open at a time
+          // One open at a time
           card.addEventListener("click", () => {
             document.querySelectorAll(".card.active").forEach(c => {
               if (c !== card) c.classList.remove("active");
@@ -166,18 +169,15 @@
       }
     }
 
-    // ✅ Helper to parse various date formats safely
+    // ✅ Helper to parse sheet dates
     function parseDate(str) {
       if (!str) return null;
       const parts = str.split(/[-/]/);
       if (parts.length === 3) {
-        // Detect if format is DD/MM/YYYY or YYYY-MM-DD
         if (parts[0].length === 4) {
-          // YYYY-MM-DD
-          return new Date(parts[0], parts[1] - 1, parts[2]);
+          return new Date(parts[0], parts[1] - 1, parts[2]); // YYYY-MM-DD
         } else {
-          // DD/MM/YYYY
-          return new Date(parts[2], parts[1] - 1, parts[0]);
+          return new Date(parts[2], parts[1] - 1, parts[0]); // DD/MM/YYYY
         }
       }
       return new Date(str);
@@ -185,4 +185,3 @@
   </script>
 </body>
 </html>
-
