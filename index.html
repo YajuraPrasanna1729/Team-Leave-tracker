@@ -75,9 +75,22 @@
               <p><b>Comments:</b> ${data.Comments || ""}</p>
             </div>
           `;
+
+          // ✅ New improved click logic: only one card open at a time
           card.addEventListener("click", () => {
+            // Close all other open cards
+            document.querySelectorAll(".card.active").forEach(c => {
+              if (c !== card) c.classList.remove("active");
+            });
+            // Toggle this one
             card.classList.toggle("active");
+
+            // Optional: scroll into view when opened
+            if (card.classList.contains("active")) {
+              card.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
           });
+
           cardsContainer.appendChild(card);
         });
       })
