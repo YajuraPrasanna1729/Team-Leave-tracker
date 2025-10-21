@@ -90,7 +90,7 @@
   <div id="message" class="warning"></div>
 
   <script>
-    // Replace with your Google Sheet link
+    // ✅ Replace with your Google Sheet link
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
@@ -100,23 +100,19 @@
     const showing = document.getElementById("showing");
     let allData = [];
 
-    // Get today's date
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    // --- Fetch data ---
+    // --- Fetch & parse ---
     fetch(sheetURL)
       .then(r => r.text())
       .then(text => {
-        // Detect delimiter automatically
-        let delimiter = ",";
-        if (text.includes("\t")) delimiter = "\t";
-        else if (text.includes(";")) delimiter = ";";
-
-        const rows = text.trim().split("\n").map(r => r.split(delimiter));
+        // Normalize: replace multiple tabs/spaces/semicolons with commas
+        const cleanText = text.replace(/\t+/g, ",").replace(/;+|\s{2,}/g, ",");
+        const rows = cleanText.trim().split("\n").map(r => r.split(","));
         const headers = rows.shift().map(h => h.trim());
         allData = rows.map(row =>
           Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
@@ -128,7 +124,7 @@
         console.error(err);
       });
 
-    // --- Event listeners ---
+    // --- Events ---
     dateInput.addEventListener("input", renderCards);
     clearBtn.addEventListener("click", () => {
       dateInput.value = "";
@@ -138,18 +134,16 @@
     function renderCards() {
       const selectedDateStr = dateInput.value;
       const selectedDate = selectedDateStr ? new Date(selectedDateStr) : null;
-      const isToday = selectedDateStr === todayStr;
       let skipped = 0;
       let visibleCount = 0;
 
-      // Message above cards
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
         : "Showing all current and upcoming leaves";
 
       cardsContainer.innerHTML = "";
 
-      allData.forEach((data) => {
+      allData.forEach(data => {
         const fromDate = parseDateFlexible(data.From);
         const toDate = parseDateFlexible(data.To);
         if (!fromDate || !toDate) {
@@ -157,7 +151,6 @@
           return;
         }
 
-        // Filtering rules
         let valid = true;
         if (selectedDate) {
           valid = selectedDate >= fromDate && selectedDate <= toDate;
@@ -191,7 +184,7 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // --- Helper functions ---
+    // --- Helpers ---
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.replace(/\r|\n/g, "").trim();
