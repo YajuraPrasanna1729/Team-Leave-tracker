@@ -54,6 +54,7 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       cursor: pointer;
       transition: 0.2s;
+      position: relative;
     }
     .card:hover { transform: scale(1.03); }
     .warning {
@@ -67,8 +68,19 @@
       color: #555;
       margin-bottom: 15px;
     }
+    /* ✅ Colored date tag at card bottom-right */
+    .date-tag {
+      position: absolute;
+      bottom: 10px;
+      right: 12px;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+    .date-tag.green { color: green; }
+    .date-tag.red { color: red; }
+    .date-tag.orange { color: orange; }
 
-    /* New: Selected details section */
+    /* Selected details section */
     #selected-details {
       max-width: 900px;
       margin: 30px auto;
@@ -122,12 +134,12 @@
     let allData = [];
 
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    // --- Fetch data from Google Sheet ---
     fetch(sheetURL)
       .then(r => r.text())
       .then(text => {
@@ -147,14 +159,12 @@
         console.error(err);
       });
 
-    // --- Event listeners ---
     dateInput.addEventListener("input", renderCards);
     clearBtn.addEventListener("click", () => {
       dateInput.value = "";
       renderCards();
     });
 
-    // --- Render cards ---
     function renderCards() {
       const selectedDateStr = dateInput.value;
       const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
@@ -166,7 +176,7 @@
         : "Showing all current and upcoming leaves";
 
       cardsContainer.innerHTML = "";
-      selectedDetails.style.display = "none"; // hide details section when filtering
+      selectedDetails.style.display = "none";
 
       allData.forEach((data) => {
         const fromDate = parseDateFlexible(data.From);
@@ -188,6 +198,19 @@
             <strong>${data.Name || "Unknown"}</strong><br>
             <span>${data.Team || ""}</span>
           `;
+
+          // ✅ Add color-coded date tag
+          const tag = document.createElement("div");
+          tag.classList.add("date-tag");
+          tag.textContent = data.From ? data.From : "";
+
+          const from = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+          if (from.getTime() > today.getTime()) tag.classList.add("green");
+          else if (from.getTime() < today.getTime()) tag.classList.add("red");
+          else tag.classList.add("orange");
+
+          card.appendChild(tag);
+
           card.addEventListener("click", () => showDetails(data));
           cardsContainer.appendChild(card);
           visibleCount++;
@@ -201,7 +224,6 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // --- Show selected details in new section ---
     function showDetails(data) {
       selectedDetails.style.display = "block";
       detailsContent.innerHTML = `
@@ -211,11 +233,9 @@
         <p><b>To:</b> ${data.To || ""}</p>
         <p><b>Comments:</b> ${data.Comments || "—"}</p>
       `;
-      // Scroll to details
       selectedDetails.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    // --- Helpers ---
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.replace(/\r|\n/g, "").trim();
