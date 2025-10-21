@@ -11,7 +11,6 @@
       margin: 0;
       padding: 20px;
       color: #333;
-      position: relative;
     }
     header {
       display: flex;
@@ -19,19 +18,30 @@
       align-items: center;
       max-width: 900px;
       margin: 0 auto 20px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
     h1 {
       margin: 0;
       font-size: 1.5rem;
     }
-    #date {
-      font-weight: bold;
-      color: #555;
+    #date-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       background: #fff;
       padding: 6px 12px;
       border-radius: 8px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    #date {
+      font-weight: bold;
+      color: #555;
       font-size: 0.95rem;
+      border: none;
+      outline: none;
+      background: none;
+      cursor: pointer;
     }
     #cards {
       display: grid;
@@ -65,32 +75,64 @@
 <body>
   <header>
     <h1>IT Department Leave Tracker</h1>
-    <div id="date"></div>
+    <div id="date-container">
+      <input type="date" id="date" />
+    </div>
   </header>
 
   <div id="cards">Loading leave data...</div>
 
   <script>
-    // ✅ Display today's date clearly
-    const dateDiv = document.getElementById("date");
-    const today = new Date();
-    const options = { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' };
-    dateDiv.textContent = today.toLocaleDateString('en-GB', options);
-
     // 🔴 REPLACE ONLY THE LINK BELOW WITH YOUR GOOGLE SHEET CSV LINK
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
     // 🔴 END OF AREA TO REPLACE
 
+    const dateInput = document.getElementById("date");
+    const cardsContainer = document.getElementById("cards");
+    let allData = []; // store all sheet rows
+
+    // ✅ Set default date to today
+    const today = new Date();
+    dateInput.valueAsDate = today;
+
+    // ✅ Fetch and display data
     fetch(sheetURL)
       .then(res => res.text())
       .then(csv => {
         const rows = csv.trim().split("\n").map(r => r.split(","));
-        const headers = rows.shift(); // first row are headers
-        const cardsContainer = document.getElementById("cards");
-        cardsContainer.innerHTML = "";
+        const headers = rows.shift();
+        allData = rows.map(row =>
+          Object.fromEntries(headers.map((h, i) => [h.trim(), row[i] ? row[i].trim() : ""]))
+        );
+        renderCards(); // render with today's date
+      })
+      .catch(err => {
+        cardsContainer.textContent = "Error loading data.";
+        console.error(err);
+      });
 
-        rows.forEach(row => {
-          const data = Object.fromEntries(headers.map((h, i) => [h.trim(), row[i] ? row[i].trim() : ""]));
+    // ✅ Re-render cards when date changes
+    dateInput.addEventListener("change", renderCards);
+
+    function renderCards() {
+      const selectedDate = new Date(dateInput.value);
+      const isToday = selectedDate.toDateString() === today.toDateString();
+
+      cardsContainer.innerHTML = "";
+
+      let visibleCount = 0;
+
+      allData.forEach(data => {
+        const fromDate = parseDate(data.From);
+        const toDate = parseDate(data.To);
+
+        // Show all cards if today's date is selected
+        // Otherwise, filter by date range
+        const isValid =
+          isToday ||
+          (fromDate && toDate && selectedDate >= fromDate && selectedDate <= toDate);
+
+        if (isValid) {
           const card = document.createElement("div");
           card.className = "card";
           card.innerHTML = `
@@ -103,25 +145,44 @@
             </div>
           `;
 
-          // ✅ Only one card open at a time
+          // Only one open at a time
           card.addEventListener("click", () => {
             document.querySelectorAll(".card.active").forEach(c => {
               if (c !== card) c.classList.remove("active");
             });
             card.classList.toggle("active");
-
             if (card.classList.contains("active")) {
               card.scrollIntoView({ behavior: "smooth", block: "center" });
             }
           });
 
           cardsContainer.appendChild(card);
-        });
-      })
-      .catch(err => {
-        document.getElementById("cards").textContent = "Error loading data.";
-        console.error(err);
+          visibleCount++;
+        }
       });
+
+      if (visibleCount === 0) {
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
+      }
+    }
+
+    // ✅ Helper to parse various date formats safely
+    function parseDate(str) {
+      if (!str) return null;
+      const parts = str.split(/[-/]/);
+      if (parts.length === 3) {
+        // Detect if format is DD/MM/YYYY or YYYY-MM-DD
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD
+          return new Date(parts[0], parts[1] - 1, parts[2]);
+        } else {
+          // DD/MM/YYYY
+          return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+      }
+      return new Date(str);
+    }
   </script>
 </body>
 </html>
+
