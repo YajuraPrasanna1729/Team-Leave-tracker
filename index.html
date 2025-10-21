@@ -6,49 +6,85 @@
   <title>Team Leave Tracker</title>
   <style>
     body {
-      font-family: system-ui, Arial;
-      background: #f6f7fb;
+      font-family: system-ui, Arial, sans-serif;
+      background: #f5f6fa;
       margin: 0;
       padding: 20px;
-      color: #222;
+      color: #333;
     }
     h1 {
       text-align: center;
       margin-bottom: 20px;
     }
-    .container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      padding: 20px;
+    #cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
       max-width: 900px;
       margin: 0 auto;
     }
-    iframe {
-      width: 100%;
-      height: 500px;
-      border: none;
-      border-radius: 8px;
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: 0.2s;
     }
-    .note {
-      text-align: center;
-      color: #777;
-      margin-top: 20px;
+    .card:hover {
+      transform: scale(1.03);
+    }
+    .details {
+      display: none;
       font-size: 0.9rem;
+      margin-top: 10px;
+      color: #555;
+    }
+    .card.active .details {
+      display: block;
     }
   </style>
 </head>
 <body>
   <h1>Team Leave Tracker</h1>
+  <div id="cards">Loading leave data...</div>
 
-  <div class="container">
-    <!-- 🔴 Replace ONLY the src below with your Zoho Sheet link -->
-   <iframe width="500" height="282" style="border:1px solid #ccc" frameborder="0" scrolling="no" src="https://sheet.zohopublic.in/sheet/published/5rjfge23186520d0d4f688cd38fe45b59d49f?mode=embed"></iframe>
-    <!-- 🔴 END of area to replace -->
+  <script>
+    // 🔴 REPLACE ONLY THE LINK BELOW WITH YOUR GOOGLE SHEET CSV LINK
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
+    // 🔴 END OF AREA TO REPLACE
 
-    <p class="note">
-      This sheet updates automatically when someone fills the leave form.
-    </p>
-  </div>
+    fetch(sheetURL)
+      .then(res => res.text())
+      .then(csv => {
+        const rows = csv.trim().split("\n").map(r => r.split(","));
+        const headers = rows.shift(); // first row are headers
+        const cardsContainer = document.getElementById("cards");
+        cardsContainer.innerHTML = "";
+
+        rows.forEach(row => {
+          const data = Object.fromEntries(headers.map((h, i) => [h.trim(), row[i] ? row[i].trim() : ""]));
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            <strong>${data.Name || "Unknown"}</strong><br>
+            <span>${data.Team || ""}</span>
+            <div class="details">
+              <p><b>From:</b> ${data.From || ""}</p>
+              <p><b>To:</b> ${data.To || ""}</p>
+              <p><b>Comments:</b> ${data.Comments || ""}</p>
+            </div>
+          `;
+          card.addEventListener("click", () => {
+            card.classList.toggle("active");
+          });
+          cardsContainer.appendChild(card);
+        });
+      })
+      .catch(err => {
+        document.getElementById("cards").textContent = "Error loading data.";
+        console.error(err);
+      });
+  </script>
 </body>
 </html>
