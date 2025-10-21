@@ -106,7 +106,6 @@
       let skipped = 0;
       let visibleCount = 0;
 
-      // Display which date is being shown
       showing.textContent = isToday
         ? "Showing all current and upcoming leaves"
         : "Showing leaves for " + formatDateDisplay(selectedDate);
@@ -114,15 +113,15 @@
       cardsContainer.innerHTML = "";
 
       allData.forEach((data) => {
-        const fromDate = parseDDMMYYYY(data.From);
-        const toDate = parseDDMMYYYY(data.To);
+        const fromDate = parseDateFlexible(data.From);
+        const toDate = parseDateFlexible(data.To);
 
         if (!fromDate || !toDate) {
           skipped++;
           return;
         }
 
-        // ✅ Inclusive range: includes "To" date as well
+        // ✅ inclusive check (includes last day)
         const valid = isToday || (selectedDate >= fromDate && selectedDate <= toDate);
 
         if (valid) {
@@ -153,15 +152,18 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // ✅ Works for DD/MM/YYYY format
-    function parseDDMMYYYY(str) {
+    // ✅ Handles DD/MM/YY, DD/MM/YYYY, and weird spaces or \r
+    function parseDateFlexible(str) {
       if (!str) return null;
+      str = str.replace(/\r|\n/g, "").trim();
       const parts = str.split(/[\/\-]/);
       if (parts.length < 3) return null;
       let [d, m, y] = parts.map(p => p.trim());
       d = +d; m = +m;
-      y = y.length === 2 ? +("20" + y) : +y;
-      return new Date(y, m - 1, d);
+      if (y.length === 2) y = "20" + y;
+      const year = +y;
+      if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
+      return new Date(year, m - 1, d);
     }
 
     function formatDateDisplay(date) {
