@@ -114,6 +114,7 @@
           return;
         }
 
+        // ✅ Inclusive date range (includes last day)
         const valid = isToday || (selectedDate >= fromDate && selectedDate <= toDate);
 
         if (valid) {
