@@ -90,7 +90,7 @@
   <div id="message" class="warning"></div>
 
   <script>
-    // Replace with your Google Sheet link
+    // Replace with your Google Sheet CSV link
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
@@ -100,18 +100,18 @@
     const showing = document.getElementById("showing");
     let allData = [];
 
-    // Get today's date
+    // --- Get today's date ---
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    // --- Fetch data ---
+    // --- Fetch data from Google Sheet ---
     fetch(sheetURL)
       .then(r => r.text())
       .then(text => {
-        // Detect delimiter automatically
+        // Detect delimiter
         let delimiter = ",";
         if (text.includes("\t")) delimiter = "\t";
         else if (text.includes(";")) delimiter = ";";
@@ -135,14 +135,13 @@
       renderCards();
     });
 
+    // --- Render cards ---
     function renderCards() {
       const selectedDateStr = dateInput.value;
-      const selectedDate = selectedDateStr ? new Date(selectedDateStr) : null;
-      const isToday = selectedDateStr === todayStr;
+      const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
       let skipped = 0;
       let visibleCount = 0;
 
-      // Message above cards
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
         : "Showing all current and upcoming leaves";
@@ -157,13 +156,13 @@
           return;
         }
 
-        // Filtering rules
+        // ✅ Inclusive date comparison (includes both start & end dates)
         let valid = true;
         if (selectedDate) {
-          valid = selectedDate >= fromDate && selectedDate <= toDate;
+          valid = selectedDate.getTime() >= fromDate.getTime() && selectedDate.getTime() <= toDate.getTime();
         }
 
-        if (valid) {
+        if (valid || !selectedDate) {
           const card = document.createElement("div");
           card.className = "card";
           card.innerHTML = `
@@ -191,7 +190,7 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // --- Helper functions ---
+    // --- Helpers ---
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.replace(/\r|\n/g, "").trim();
@@ -202,7 +201,7 @@
       if (y.length === 2) y = "20" + y;
       const year = +y;
       if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
-      return new Date(year, m - 1, d);
+      return new Date(year, m - 1, d, 0, 0, 0, 0);
     }
 
     function formatDateDisplay(date) {
