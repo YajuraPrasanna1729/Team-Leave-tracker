@@ -1,146 +1,217 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Leave Tracker</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IT Department Leave Tracker</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f6f6f6; margin: 0; padding: 20px; color: #333; }
-    header { max-width: 900px; margin: 0 auto 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    body {
+      font-family: system-ui, Arial, sans-serif;
+      background: #f5f6fa;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 900px;
+      margin: 0 auto 10px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
     h1 { margin: 0; font-size: 1.5rem; }
-    .controls { display: flex; gap: 8px; align-items: center; }
-    input[type=date] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; }
-    button { padding: 6px 10px; border: none; background: #ddd; border-radius: 8px; cursor: pointer; }
-    #showing { text-align: center; color: #555; margin: 12px auto; max-width: 900px; }
-    #cards { max-width: 900px; margin: 0 auto; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); cursor: pointer; transition: transform .15s; }
-    .card:hover { transform: translateY(-3px); }
-    .card strong { display: block; margin-bottom: 8px; color: #0066cc; }
-    .details { display: none; margin-top: 10px; color: #555; font-size: .9rem; background: #f9f9f9; padding: 8px; border-radius: 6px; }
+    #date-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      padding: 6px 12px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    #date {
+      font-weight: bold;
+      color: #555;
+      font-size: 0.95rem;
+      border: none;
+      outline: none;
+      background: none;
+      cursor: pointer;
+    }
+    #cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .card:hover { transform: scale(1.03); }
+    .details {
+      display: none;
+      font-size: 0.9rem;
+      margin-top: 10px;
+      color: #555;
+    }
     .card.active .details { display: block; }
-    .warning { color: #a33; text-align: center; margin-top: 10px; }
+    .warning {
+      color: #a33;
+      text-align: center;
+      margin-top: 12px;
+      white-space: pre-wrap;
+    }
+    #showing {
+      text-align: center;
+      color: #555;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
+  <header>
+    <h1>IT Department Leave Tracker</h1>
+    <div id="date-container">
+      <input type="date" id="date" />
+      <button id="clearDate" style="border:none;background:#eee;padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
+    </div>
+  </header>
 
-<header>
-  <h1>Leave Tracker</h1>
-  <div class="controls">
-    <input type="date" id="datePicker">
-    <button id="clearBtn">Clear</button>
-  </div>
-</header>
+  <div id="showing"></div>
+  <div id="cards">Loading leave data...</div>
+  <div id="message" class="warning"></div>
 
-<div id="showing">Loading...</div>
-<div id="cards"></div>
-<div id="msg" class="warning"></div>
+  <script>
+    // Replace with your Google Sheet link
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
-<script>
-  // --- CONFIG: replace with your sheet export URL ---
-  const sheetURL = "https://docs.google.com/spreadsheets/d/e/<some-id>/pub?output=csv";
-  // ----------------------------------------------------
+    const dateInput = document.getElementById("date");
+    const clearBtn = document.getElementById("clearDate");
+    const cardsContainer = document.getElementById("cards");
+    const message = document.getElementById("message");
+    const showing = document.getElementById("showing");
+    let allData = [];
 
-  const datePicker = document.getElementById('datePicker');
-  const clearBtn = document.getElementById('clearBtn');
-  const cardsDiv = document.getElementById('cards');
-  const showingDiv = document.getElementById('showing');
-  const msgDiv = document.getElementById('msg');
+    // Get today's date
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
 
-  let allEntries = [];
+    // --- Fetch data ---
+    fetch(sheetURL)
+      .then(r => r.text())
+      .then(text => {
+        // Detect delimiter automatically
+        let delimiter = ",";
+        if (text.includes("\t")) delimiter = "\t";
+        else if (text.includes(";")) delimiter = ";";
 
-  // Clear date => show all
-  clearBtn.addEventListener('click', () => {
-    datePicker.value = "";
-    render();
-  });
-
-  // On date change
-  datePicker.addEventListener('input', render);
-
-  // Fetch sheet data
-  fetch(sheetURL)
-    .then(r => {
-      if (!r.ok) throw new Error('Fetch error: ' + r.status);
-      return r.text();
-    })
-    .then(text => {
-      const rows = text.trim().split('\n').map(r => r.split(',').map(c => c.trim()));
-      const headers = rows.shift();
-      allEntries = rows.map(r => {
-        const obj = {};
-        headers.forEach((h,i) => obj[h] = r[i] || "");
-        return obj;
+        const rows = text.trim().split("\n").map(r => r.split(delimiter));
+        const headers = rows.shift().map(h => h.trim());
+        allData = rows.map(row =>
+          Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
+        );
+        renderCards();
+      })
+      .catch(err => {
+        cardsContainer.innerHTML = "Error loading data.";
+        console.error(err);
       });
-      render();
-    })
-    .catch(err => {
-      showingDiv.textContent = "Error loading data.";
-      msgDiv.textContent = err.message;
-      console.error(err);
+
+    // --- Event listeners ---
+    dateInput.addEventListener("input", renderCards);
+    clearBtn.addEventListener("click", () => {
+      dateInput.value = "";
+      renderCards();
     });
 
-  function render() {
-    const selDateStr = datePicker.value;
-    const selDate = selDateStr ? new Date(selDateStr + 'T00:00:00') : null;
-    showingDiv.textContent = selDate ? `Showing for ${formatDisplay(selDate)}` : 'Showing all entries';
+    function renderCards() {
+      const selectedDateStr = dateInput.value;
+      const selectedDate = selectedDateStr ? new Date(selectedDateStr) : null;
+      const isToday = selectedDateStr === todayStr;
+      let skipped = 0;
+      let visibleCount = 0;
 
-    cardsDiv.innerHTML = '';
-    msgDiv.textContent = '';
+      // Message above cards
+      showing.textContent = selectedDate
+        ? "Showing leaves for " + formatDateDisplay(selectedDate)
+        : "Showing all current and upcoming leaves";
 
-    let visible = 0;
-    allEntries.forEach(entry => {
-      const fromDate = parseDate(entry.From);
-      const toDate   = parseDate(entry.To);
-      if (!fromDate || !toDate) return;
+      cardsContainer.innerHTML = "";
 
-      let ok = true;
-      if (selDate) {
-        ok = (selDate >= fromDate && selDate <= toDate);
+      allData.forEach((data) => {
+        const fromDate = parseDateFlexible(data.From);
+        const toDate = parseDateFlexible(data.To);
+        if (!fromDate || !toDate) {
+          skipped++;
+          return;
+        }
+
+        // Filtering rules
+        let valid = true;
+        if (selectedDate) {
+          valid = selectedDate >= fromDate && selectedDate <= toDate;
+        }
+
+        if (valid) {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            <strong>${data.Name || "Unknown"}</strong><br>
+            <span>${data.Team || ""}</span>
+            <div class="details">
+              <p><b>From:</b> ${data.From || ""}</p>
+              <p><b>To:</b> ${data.To || ""}</p>
+              <p><b>Comments:</b> ${data.Comments || ""}</p>
+            </div>
+          `;
+          card.addEventListener("click", () => {
+            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+          });
+          cardsContainer.appendChild(card);
+          visibleCount++;
+        }
+      });
+
+      if (visibleCount === 0) {
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
       }
-      if (ok) {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <strong>${entry.Name || 'Unknown'}</strong>
-          <div>Team: ${entry.Team || ''}</div>
-          <div class="details">
-            <div><b>From:</b> ${entry.From}</div>
-            <div><b>To:</b> ${entry.To}</div>
-            <div><b>Comments:</b> ${entry.Comments || ''}</div>
-          </div>
-        `;
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.card.active').forEach(c => { if (c !== card) c.classList.remove('active'); });
-          card.classList.toggle('active');
-        });
-        cardsDiv.appendChild(card);
-        visible++;
-      }
-    });
 
-    if (visible === 0) {
-      cardsDiv.innerHTML = '<p style="text-align:center;color:#777">No matching entries.</p>';
+      message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
-  }
 
-  function parseDate(str) {
-    if (!str) return null;
-    str = str.trim().replace(/\r|\n/g, '');
-    const parts = str.split(/[-\/]/);
-    if (parts.length < 3) return null;
-    let [d,m,y] = parts;
-    d = Number(d); m = Number(m);
-    if (y.length === 2) y = '20'+y;
-    y = Number(y);
-    if (isNaN(d)||isNaN(m)||isNaN(y)) return null;
-    return new Date(y, m-1, d);
-  }
+    // --- Helper functions ---
+    function parseDateFlexible(str) {
+      if (!str) return null;
+      str = str.replace(/\r|\n/g, "").trim();
+      const parts = str.split(/[-\/]/);
+      if (parts.length < 3) return null;
+      let [d, m, y] = parts.map(p => p.trim());
+      d = +d; m = +m;
+      if (y.length === 2) y = "20" + y;
+      const year = +y;
+      if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
+      return new Date(year, m - 1, d);
+    }
 
-  function formatDisplay(date) {
-    return date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-  }
-
-</script>
-
+    function formatDateDisplay(date) {
+      return date.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+  </script>
 </body>
 </html>
