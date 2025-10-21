@@ -5,198 +5,281 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>IT Department Leave Tracker</title>
   <style>
-    body {
-      font-family: system-ui, Arial, sans-serif;
-      background: #f5f6fa;
-      margin: 0;
-      padding: 20px;
-      color: #333;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      max-width: 900px;
-      margin: 0 auto 10px;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    h1 { margin: 0; font-size: 1.5rem; }
-    #date-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: #fff;
-      padding: 6px 12px;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
-    #date {
-      font-weight: bold;
-      color: #555;
-      font-size: 0.95rem;
-      border: none;
-      outline: none;
-      background: none;
-      cursor: pointer;
-    }
-    #cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 15px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
-    .card {
-      background: white;
-      padding: 15px;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .card:hover { transform: scale(1.03); }
-    .details {
-      display: none;
-      font-size: 0.9rem;
-      margin-top: 10px;
-      color: #555;
-    }
-    .card.active .details { display: block; }
-    .warning {
-      color: #a33;
-      text-align: center;
-      margin-top: 12px;
-      white-space: pre-wrap;
-    }
-    #showing {
-      text-align: center;
-      color: #555;
-      margin-bottom: 15px;
-    }
-    button {
-      border:none;
-      background:#eee;
-      padding:4px 8px;
-      border-radius:6px;
-      cursor:pointer;
-    }
+    body { font-family: system-ui, Arial, sans-serif; background:#f6f7fb; margin:0; padding:20px; color:#222; }
+    header { max-width:1000px; margin:0 auto 18px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    h1 { margin:0; font-size:1.4rem; }
+    .controls { display:flex; gap:8px; align-items:center; }
+    input[type="date"], input[type="search"] { padding:6px 10px; border-radius:8px; border:1px solid #ddd; background:white; }
+    button { padding:6px 10px; border-radius:8px; border:0; background:#eee; cursor:pointer; }
+    #showing { text-align:center; color:#555; margin:8px auto 14px; max-width:1000px; }
+    #cards { max-width:1000px; margin:0 auto; display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+    .card { background:white; padding:14px; border-radius:10px; box-shadow:0 6px 18px rgba(20,20,40,0.06); cursor:pointer; transition:transform .15s; }
+    .card:hover { transform:translateY(-3px); }
+    .card strong { color:#0b63ff; display:block; margin-bottom:6px; }
+    .meta { color:#666; font-size:0.9rem; }
+    .details { display:none; margin-top:10px; color:#333; font-size:0.95rem; background:#f7f8fb; padding:8px; border-radius:6px; }
+    .card.active .details { display:block; }
+    .note { max-width:1000px; margin:14px auto; color:#666; font-size:0.9rem; text-align:center; }
+    .warning { color:#a33; text-align:center; margin-top:10px; }
   </style>
 </head>
 <body>
   <header>
     <h1>IT Department Leave Tracker</h1>
-    <div id="date-container">
+    <div class="controls">
+      <input type="search" id="search" placeholder="Search name or team" />
       <input type="date" id="date" />
-      <button id="clearDate">Clear</button>
+      <button id="todayBtn" title="Select today">Today</button>
+      <button id="clearBtn">Clear</button>
     </div>
   </header>
 
-  <div id="showing"></div>
-  <div id="cards">Loading leave data...</div>
-  <div id="message" class="warning"></div>
+  <div id="showing">Loading entries…</div>
+  <div id="cards"></div>
+  <div id="msg" class="warning" aria-live="polite"></div>
+  <div class="note">Tip: click a card to view details. Use the date picker to filter by any date (inclusive).</div>
 
-  <script>
-    // ✅ Replace this with your actual Google Sheet link
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
+<script>
+/* ----------------------------
+  CONFIG: set your sheet export URL here
+  Use Google Sheet: File → Share → Get link (Viewer),
+  then use: https://docs.google.com/spreadsheets/d/YOUR_ID/export?format=csv
+----------------------------*/
+const sheetURL = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_YOUR_SHEET_ID/export?format=csv";
+/* ---------------------------- */
 
-    const dateInput = document.getElementById("date");
-    const clearBtn = document.getElementById("clearDate");
-    const cardsContainer = document.getElementById("cards");
-    const message = document.getElementById("message");
-    const showing = document.getElementById("showing");
-    let allData = [];
+const dateInput = document.getElementById('date');
+const searchInput = document.getElementById('search');
+const todayBtn = document.getElementById('todayBtn');
+const clearBtn = document.getElementById('clearBtn');
+const cardsDiv = document.getElementById('cards');
+const showingDiv = document.getElementById('showing');
+const msgDiv = document.getElementById('msg');
 
-    // --- Fetch & parse ---
-    fetch(sheetURL)
-      .then(r => r.text())
-      .then(text => {
-        // Detect whether data is comma-separated or tab-separated
-        const delimiter = text.includes("\t") ? "\t" : ",";
-        const rows = text.trim().split("\n").map(r => r.split(delimiter));
-        const headers = rows.shift().map(h => h.trim());
-        allData = rows.map(row =>
-          Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
-        );
-        renderCards();
-      })
-      .catch(err => {
-        cardsContainer.innerHTML = "Error loading data.";
-        console.error(err);
-      });
+let allRows = []; // array of objects
 
-    // --- Date controls ---
-    dateInput.addEventListener("input", renderCards);
-    clearBtn.addEventListener("click", () => { dateInput.value = ""; renderCards(); });
+// helper: today's YYYY-MM-DD
+function todayYMD(){
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = String(t.getMonth()+1).padStart(2,'0');
+  const d = String(t.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
 
-    function renderCards() {
-      const selectedDateStr = dateInput.value;
-      const selectedDate = selectedDateStr ? new Date(selectedDateStr) : null;
-      let skipped = 0;
-      let visibleCount = 0;
+// set date input blank by default (so default view shows all)
+dateInput.value = ""; // blank = show all by default
 
-      showing.textContent = selectedDate
-        ? "Showing leaves for " + formatDateDisplay(selectedDate)
-        : "Showing all leaves";
+// today shortcut
+todayBtn.addEventListener('click', ()=> { dateInput.value = todayYMD(); render(); });
 
-      cardsContainer.innerHTML = "";
+// clear button
+clearBtn.addEventListener('click', ()=> { dateInput.value = ""; searchInput.value=""; render(); });
 
-      allData.forEach(data => {
-        const fromDate = parseDateFlexible(data.From);
-        const toDate = parseDateFlexible(data.To);
-        if (!fromDate || !toDate) { skipped++; return; }
+// re-render on input
+dateInput.addEventListener('input', render);
+searchInput.addEventListener('input', render);
 
-        let valid = true;
-        if (selectedDate) {
-          // Inclusive of from and to date
-          valid = selectedDate >= fromDate && selectedDate <= toDate;
-        }
+// Fetch sheet, detect delimiter, parse rows robustly (handles quoted fields)
+fetch(sheetURL)
+  .then(r => {
+    if (!r.ok) throw new Error('Failed to fetch sheet: ' + r.status);
+    return r.text();
+  })
+  .then(text => {
+    // Normalize line endings
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    // detect delimiter (tab or comma or semicolon)
+    let delimiter = ',';
+    if (text.indexOf('\t') !== -1) delimiter = '\t';
+    else if (text.indexOf(';') !== -1 && text.indexOf(',') === -1) delimiter = ';';
+    console.log('Detected delimiter:', JSON.stringify(delimiter));
 
-        if (valid) {
-          const card = document.createElement("div");
-          card.className = "card";
-          card.innerHTML = `
-            <strong>${data.Name || "Unknown"}</strong><br>
-            <span>${data.Team || ""}</span>
-            <div class="details">
-              <p><b>From:</b> ${data.From || ""}</p>
-              <p><b>To:</b> ${data.To || ""}</p>
-              <p><b>Comments:</b> ${data.Comments || ""}</p>
-            </div>`;
-          card.addEventListener("click", () => {
-            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
-            card.classList.add("active");
-          });
-          cardsContainer.appendChild(card);
-          visibleCount++;
-        }
-      });
+    // Parse into rows using a simple quoted-field aware parser
+    const rows = parseSeparated(text, delimiter);
+    if (!rows || rows.length < 1) throw new Error('No rows found in sheet export.');
 
-      if (visibleCount === 0)
-        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
+    const headers = rows[0].map(h => (h||'').trim());
+    allRows = rows.slice(1).map(r => {
+      const obj = {};
+      headers.forEach((h,i)=> obj[h || `col${i}`] = (r[i]||'').trim());
+      return obj;
+    });
 
-      message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
+    render();
+  })
+  .catch(err => {
+    console.error(err);
+    showingDiv.textContent = 'Could not load sheet data.';
+    msgDiv.textContent = 'Check the sheet URL and that the sheet is shared (Viewer) publicly.';
+  });
+
+/* Render logic:
+   - If dateInput empty => show ALL rows
+   - If dateInput has value => show rows where selectedDate ∈ [From,To] inclusive
+   - Search filters by name/team (case-insensitive substring)
+*/
+function render(){
+  cardsDiv.innerHTML = '';
+  msgDiv.textContent = '';
+  const sdStr = dateInput.value; // '' or YYYY-MM-DD
+  const selectedDate = sdStr ? new Date(sdStr + 'T00:00:00') : null;
+  const showingText = selectedDate ? `Showing leaves for ${formatDisplay(selectedDate)}` : 'Showing all leaves';
+  showingDiv.textContent = showingText;
+
+  const q = (searchInput.value || '').trim().toLowerCase();
+
+  let skipped = 0;
+  let shown = 0;
+
+  for (const row of allRows){
+    // find columns robustly
+    const name = row['Name'] ?? row['Employee'] ?? row['Full Name'] ?? row['name'] ?? '';
+    const team = row['Team'] ?? row['Department'] ?? row['team'] ?? '';
+    const fromRaw = row['From'] ?? row['From Date'] ?? row['Start'] ?? row['Start Date'] ?? row['from'] ?? '';
+    const toRaw = row['To'] ?? row['To Date'] ?? row['End'] ?? row['End Date'] ?? row['to'] ?? '';
+    const comments = row['Comments'] ?? row['Notes'] ?? row['Reason'] ?? '';
+
+    const fromDate = parseDateSmart(fromRaw);
+    const toDate   = parseDateSmart(toRaw);
+
+    if (!fromDate || !toDate) {
+      skipped++;
+      continue;
     }
 
-    // --- Helpers ---
-    function parseDateFlexible(str) {
-      if (!str) return null;
-      str = str.trim().replace(/\r|\n/g, "");
-      const parts = str.split(/[-\/]/);
-      if (parts.length < 3) return null;
-      let [d, m, y] = parts.map(p => p.trim());
-      d = +d; m = +m;
-      if (y.length === 2) y = "20" + y;
-      const year = +y;
-      if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
-      return new Date(year, m - 1, d);
+    // apply date filter if selected
+    let showByDate = true;
+    if (selectedDate) {
+      showByDate = (selectedDate.getTime() >= fromDate.getTime() && selectedDate.getTime() <= toDate.getTime());
     }
 
-    function formatDateDisplay(date) {
-      return date.toLocaleDateString("en-GB", {
-        day: "2-digit", month: "short", year: "numeric"
+    // search filter
+    const qOk = !q || (name.toLowerCase().includes(q) || team.toLowerCase().includes(q));
+
+    if (showByDate && qOk) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <strong>${escapeHtml(name) || 'Unknown'}</strong>
+        <div class="meta">${escapeHtml(team)}</div>
+        <div class="details">
+          <div><b>From:</b> ${escapeHtml(fromRaw)}</div>
+          <div><b>To:</b> ${escapeHtml(toRaw)}</div>
+          <div><b>Comments:</b> ${escapeHtml(comments)}</div>
+        </div>`;
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.card.active').forEach(c => { if (c !== card) c.classList.remove('active'); });
+        card.classList.toggle('active');
+        if (card.classList.contains('active')) card.scrollIntoView({behavior:'smooth', block:'center'});
       });
+      cardsDiv.appendChild(card);
+      shown++;
     }
-  </script>
+  }
+
+  if (shown === 0) {
+    cardsDiv.innerHTML = '<p style="text-align:center;color:#777">No leaves found for the selected date/search.</p>';
+  }
+  if (skipped > 0) msgDiv.textContent = `${skipped} row(s) skipped due to missing/unrecognized From/To.`;
+}
+
+/* ----------------------
+  Utilities
+-----------------------*/
+
+// parse CSV/TSV with support for quoted fields; delimiter param (',' or '\t' or ';')
+function parseSeparated(text, delimiter=','){
+  const rows = [];
+  let cur = '';
+  let row = [];
+  let inQuotes = false;
+  for (let i=0;i<text.length;i++){
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i+1] === '"') { cur += '"'; i++; continue; }
+        inQuotes = false; // end quotes
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') { inQuotes = true; continue; }
+      if (ch === delimiter) {
+        row.push(cur); cur=''; continue;
+      }
+      if (ch === '\n') {
+        row.push(cur); rows.push(row); row=[]; cur=''; continue;
+      }
+      // also treat tab/newline as row separator if delimiter is comma but file contains tabs
+      if (delimiter!=='\t' && ch === '\t') {
+        row.push(cur); cur=''; continue;
+      }
+      cur += ch;
+    }
+  }
+  // push last
+  if (cur !== '' || row.length > 0) row.push(cur);
+  if (row.length) rows.push(row);
+  return rows;
+}
+
+// parse dates coming from sheet: accepts DD/MM/YY, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, "21 Oct 2025", serial numbers
+function parseDateSmart(value){
+  if (!value && value !== 0) return null;
+  let s = String(value).trim().replace(/\r/g,'').replace(/\n/g,'');
+  if (!s) return null;
+
+  // if numeric (and reasonable size) treat as serial (Google may send serials rarely) -> Excel epoch 1899-12-30
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    if (n > 30000 && n < 60000) {
+      const base = new Date(1899,11,30);
+      const dt = new Date(base.getTime() + Math.round(n) * 86400000);
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    }
+  }
+
+  // common separators
+  // DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    let d = Number(m[1]), mo = Number(m[2]), y = m[3].length===2 ? 2000+Number(m[3]) : Number(m[3]);
+    if (isValidDMY(d,mo,y)) return new Date(y, mo-1, d);
+  }
+
+  // YYYY-MM-DD
+  m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (m) {
+    let y=Number(m[1]), mo=Number(m[2]), d=Number(m[3]);
+    if (isValidDMY(d,mo,y)) return new Date(y, mo-1, d);
+  }
+
+  // formats like "21 Oct 2025" or "Oct 21, 2025"
+  const parsed = Date.parse(s);
+  if (!isNaN(parsed)) {
+    const dt = new Date(parsed);
+    return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  }
+
+  return null;
+}
+
+function isValidDMY(d,m,y){
+  if (isNaN(d)||isNaN(m)||isNaN(y)) return false;
+  if (m<1||m>12) return false;
+  if (d<1||d>31) return false;
+  return true;
+}
+
+function formatDisplay(date){
+  return date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function escapeHtml(s){
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
 </body>
 </html>
