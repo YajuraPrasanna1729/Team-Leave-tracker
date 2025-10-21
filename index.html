@@ -67,8 +67,8 @@
   <div id="message" class="warning"></div>
 
   <script>
-    // Replace this with your actual Google Sheet CSV/TSV link
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=tsv";
+    // Replace this with your Google Sheet export link
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
     const cardsContainer = document.getElementById("cards");
@@ -88,12 +88,21 @@
 
     fetch(sheetURL)
       .then(r => r.text())
-      .then(tsv => {
-        const rows = tsv.trim().split("\n").map(r => r.split(/\t/)); // split by tab
+      .then(text => {
+        // Detect delimiter automatically
+        let delimiter = ",";
+        if (text.includes("\t")) delimiter = "\t";
+        else if (text.includes(";")) delimiter = ";";
+
+        console.log("Detected delimiter:", JSON.stringify(delimiter));
+
+        const rows = text.trim().split("\n").map(r => r.split(delimiter));
         const headers = rows.shift().map(h => h.trim());
+        console.log("Headers:", headers);
         allData = rows.map(row =>
           Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
         );
+        console.log("Parsed data:", allData);
         renderCards();
       })
       .catch(err => {
@@ -122,7 +131,6 @@
           return;
         }
 
-        // ✅ inclusive check (includes last day)
         const valid = isToday || (selectedDate >= fromDate && selectedDate <= toDate);
 
         if (valid) {
@@ -153,7 +161,6 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // ✅ Handles DD-MM-YYYY and DD/MM/YYYY
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.replace(/\r|\n/g, "").trim();
