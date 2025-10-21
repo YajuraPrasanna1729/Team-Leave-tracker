@@ -67,7 +67,8 @@
   <div id="message" class="warning"></div>
 
   <script>
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
+    // Replace this with your actual Google Sheet CSV/TSV link
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=tsv";
 
     const dateInput = document.getElementById("date");
     const cardsContainer = document.getElementById("cards");
@@ -87,8 +88,8 @@
 
     fetch(sheetURL)
       .then(r => r.text())
-      .then(csv => {
-        const rows = csv.trim().split("\n").map(r => r.split(","));
+      .then(tsv => {
+        const rows = tsv.trim().split("\n").map(r => r.split(/\t/)); // split by tab
         const headers = rows.shift().map(h => h.trim());
         allData = rows.map(row =>
           Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
@@ -152,11 +153,11 @@
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // ✅ Handles DD/MM/YY, DD/MM/YYYY, and weird spaces or \r
+    // ✅ Handles DD-MM-YYYY and DD/MM/YYYY
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.replace(/\r|\n/g, "").trim();
-      const parts = str.split(/[\/\-]/);
+      const parts = str.split(/[-\/]/);
       if (parts.length < 3) return null;
       let [d, m, y] = parts.map(p => p.trim());
       d = +d; m = +m;
