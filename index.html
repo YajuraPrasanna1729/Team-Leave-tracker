@@ -74,6 +74,13 @@
       color: #555;
       margin-bottom: 15px;
     }
+    button {
+      border:none;
+      background:#eee;
+      padding:4px 8px;
+      border-radius:6px;
+      cursor:pointer;
+    }
   </style>
 </head>
 <body>
@@ -81,7 +88,7 @@
     <h1>IT Department Leave Tracker</h1>
     <div id="date-container">
       <input type="date" id="date" />
-      <button id="clearDate" style="border:none;background:#eee;padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
+      <button id="clearDate">Clear</button>
     </div>
   </header>
 
@@ -90,7 +97,7 @@
   <div id="message" class="warning"></div>
 
   <script>
-    // ✅ Replace with your Google Sheet link
+    // ✅ Replace this with your actual Google Sheet link
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
@@ -100,19 +107,13 @@
     const showing = document.getElementById("showing");
     let allData = [];
 
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-
     // --- Fetch & parse ---
     fetch(sheetURL)
       .then(r => r.text())
       .then(text => {
-        // Normalize: replace multiple tabs/spaces/semicolons with commas
-        const cleanText = text.replace(/\t+/g, ",").replace(/;+|\s{2,}/g, ",");
-        const rows = cleanText.trim().split("\n").map(r => r.split(","));
+        // Detect whether data is comma-separated or tab-separated
+        const delimiter = text.includes("\t") ? "\t" : ",";
+        const rows = text.trim().split("\n").map(r => r.split(delimiter));
         const headers = rows.shift().map(h => h.trim());
         allData = rows.map(row =>
           Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
@@ -124,12 +125,9 @@
         console.error(err);
       });
 
-    // --- Events ---
+    // --- Date controls ---
     dateInput.addEventListener("input", renderCards);
-    clearBtn.addEventListener("click", () => {
-      dateInput.value = "";
-      renderCards();
-    });
+    clearBtn.addEventListener("click", () => { dateInput.value = ""; renderCards(); });
 
     function renderCards() {
       const selectedDateStr = dateInput.value;
@@ -139,20 +137,18 @@
 
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
-        : "Showing all current and upcoming leaves";
+        : "Showing all leaves";
 
       cardsContainer.innerHTML = "";
 
       allData.forEach(data => {
         const fromDate = parseDateFlexible(data.From);
         const toDate = parseDateFlexible(data.To);
-        if (!fromDate || !toDate) {
-          skipped++;
-          return;
-        }
+        if (!fromDate || !toDate) { skipped++; return; }
 
         let valid = true;
         if (selectedDate) {
+          // Inclusive of from and to date
           valid = selectedDate >= fromDate && selectedDate <= toDate;
         }
 
@@ -166,8 +162,7 @@
               <p><b>From:</b> ${data.From || ""}</p>
               <p><b>To:</b> ${data.To || ""}</p>
               <p><b>Comments:</b> ${data.Comments || ""}</p>
-            </div>
-          `;
+            </div>`;
           card.addEventListener("click", () => {
             document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
             card.classList.add("active");
@@ -177,9 +172,8 @@
         }
       });
 
-      if (visibleCount === 0) {
+      if (visibleCount === 0)
         cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
-      }
 
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
@@ -187,7 +181,7 @@
     // --- Helpers ---
     function parseDateFlexible(str) {
       if (!str) return null;
-      str = str.replace(/\r|\n/g, "").trim();
+      str = str.trim().replace(/\r|\n/g, "");
       const parts = str.split(/[-\/]/);
       if (parts.length < 3) return null;
       let [d, m, y] = parts.map(p => p.trim());
@@ -200,9 +194,7 @@
 
     function formatDateDisplay(date) {
       return date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
+        day: "2-digit", month: "short", year: "numeric"
       });
     }
   </script>
