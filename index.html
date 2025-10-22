@@ -219,17 +219,20 @@
           return;
         }
 
-        let show = false;
         const isPast = now > toDate;
         const isOngoing = now >= fromDate && now <= toDate;
         const isFuture = now < fromDate;
 
+        let show = false;
+
+        // --- Selection logic corrected ---
         if (selectedDate) {
-          show = selectedDate >= fromDate && selectedDate <= toDate;
-        } else if (activeTab === "current") {
-          show = isOngoing || isFuture;
-        } else if (activeTab === "past") {
-          show = isPast;
+          const isInRange = selectedDate >= fromDate && selectedDate <= toDate;
+          if (activeTab === "past" && isInRange && toDate < now) show = true;
+          else if (activeTab === "current" && isInRange && toDate >= now) show = true;
+        } else {
+          if (activeTab === "past") show = isPast;
+          else show = isOngoing || isFuture;
         }
 
         if (show) {
@@ -252,7 +255,6 @@
               dot.textContent = daysBetween(toDate, now);
             } else if (isFuture) {
               dot.className = "dot green";
-              dot.textContent = "";
             }
             if (dot.className) card.appendChild(dot);
           }
@@ -261,6 +263,7 @@
             document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
             card.classList.add("active");
           });
+
           cardsContainer.appendChild(card);
           visibleCount++;
         }
@@ -302,4 +305,3 @@
   </script>
 </body>
 </html>
-
