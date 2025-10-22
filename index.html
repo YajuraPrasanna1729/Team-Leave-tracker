@@ -1,30 +1,292 @@
-function parseDateFlexible(str) {
-  if (!str) return null;
-  str = str.trim().replace(/\r|\n/g, "");
-  
-  // Try multiple known date formats
-  const formats = [
-    /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/,  // 21/10/2025 or 21-10-25
-    /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/,    // 2025-10-21
-  ];
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IT Department Leave Tracker</title>
+  <style>
+    body {
+      font-family: system-ui, Arial, sans-serif;
+      background: #f5f6fa;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 900px;
+      margin: 0 auto 10px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    h1 { margin: 0; font-size: 1.5rem; }
+    #date-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      padding: 6px 12px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    #date {
+      font-weight: bold;
+      color: #555;
+      font-size: 0.95rem;
+      border: none;
+      outline: none;
+      background: none;
+      cursor: pointer;
+    }
+    #cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      position: relative;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .card:hover { transform: scale(1.03); }
+    .details {
+      display: none;
+      font-size: 0.9rem;
+      margin-top: 10px;
+      color: #555;
+    }
+    .card.active .details { display: block; }
+    .badge {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+    }
+    .badge.green { background: #2ecc71; }
+    .badge.orange { background: #e67e22; }
+    .badge.red { background: #e74c3c; }
+    .warning {
+      color: #a33;
+      text-align: center;
+      margin-top: 12px;
+      white-space: pre-wrap;
+    }
+    #showing {
+      text-align: center;
+      color: #555;
+      margin-bottom: 15px;
+    }
+    #detailsPanel {
+      max-width: 900px;
+      margin: 20px auto 0;
+      background: white;
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: none;
+    }
+    #detailsPanel h2 {
+      margin-top: 0;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>IT Department Leave Tracker</h1>
+    <div id="date-container">
+      <input type="date" id="date" />
+      <button id="clearDate" style="border:none;background:#eee;padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
+    </div>
+  </header>
 
-  for (const f of formats) {
-    const m = str.match(f);
-    if (m) {
-      let [_, a, b, c] = m.map(x => x.trim());
-      let day, month, year;
+  <div id="showing"></div>
+  <div id="cards">Loading leave data...</div>
+  <div id="message" class="warning"></div>
+  <div id="detailsPanel"></div>
 
-      if (f === formats[1]) {
-        year = +a; month = +b; day = +c;
-      } else {
-        // If year looks like '25' assume 2025
-        if (c.length === 2) c = "20" + c;
-        day = +a; month = +b; year = +c;
+  <script>
+    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
+
+    const dateInput = document.getElementById("date");
+    const clearBtn = document.getElementById("clearDate");
+    const cardsContainer = document.getElementById("cards");
+    const message = document.getElementById("message");
+    const showing = document.getElementById("showing");
+    const detailsPanel = document.getElementById("detailsPanel");
+    let allData = [];
+
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    fetch(sheetURL)
+      .then(r => r.text())
+      .then(text => {
+        let delimiter = ",";
+        if (text.includes("\t")) delimiter = "\t";
+        else if (text.includes(";")) delimiter = ";";
+
+        const rows = text.trim().split("\n").map(r => r.split(delimiter));
+        const headers = rows.shift().map(h => h.trim());
+        allData = rows.map(row =>
+          Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
+        );
+        renderCards();
+      })
+      .catch(err => {
+        cardsContainer.innerHTML = "Error loading data.";
+        console.error(err);
+      });
+
+    dateInput.addEventListener("input", renderCards);
+    clearBtn.addEventListener("click", () => {
+      dateInput.value = "";
+      renderCards();
+    });
+
+    function renderCards() {
+      const selectedDateStr = dateInput.value;
+      const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
+      let skipped = 0;
+      let visibleCount = 0;
+
+      showing.textContent = selectedDate
+        ? "Showing leaves for " + formatDateDisplay(selectedDate)
+        : "Showing all current and upcoming leaves";
+
+      cardsContainer.innerHTML = "";
+      detailsPanel.style.display = "none";
+
+      allData.forEach((data) => {
+        const fromDate = parseDateFlexible(data.From);
+        const toDate = parseDateFlexible(data.To);
+        if (!fromDate || !toDate) {
+          skipped++;
+          return;
+        }
+
+        let valid = true;
+        if (selectedDate) {
+          valid = selectedDate >= fromDate && selectedDate <= toDate;
+        }
+
+        if (valid || !selectedDate) {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            <strong>${data.Name || "Unknown"}</strong><br>
+            <span>${data.Team || ""}</span>
+            <div class="details">
+              <p><b>From:</b> ${data.From || ""}</p>
+              <p><b>To:</b> ${data.To || ""}</p>
+              <p><b>Comments:</b> ${data.Comments || ""}</p>
+            </div>
+          `;
+
+          // Add badge (only when showing all)
+          if (!selectedDate) {
+            const badge = document.createElement("div");
+            badge.classList.add("badge");
+
+            const today = new Date();
+            if (today >= fromDate && today <= toDate) {
+              badge.classList.add("orange");
+              badge.textContent = Math.ceil((toDate - today) / (1000 * 60 * 60 * 24)) + 1;
+            } else if (today < fromDate) {
+              badge.classList.add("green");
+              badge.textContent = "";
+            } else {
+              badge.classList.add("red");
+              badge.textContent = Math.ceil((today - toDate) / (1000 * 60 * 60 * 24));
+            }
+
+            card.appendChild(badge);
+          }
+
+          card.addEventListener("click", () => {
+            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+            showDetails(data);
+          });
+
+          cardsContainer.appendChild(card);
+          visibleCount++;
+        }
+      });
+
+      if (visibleCount === 0) {
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
       }
 
-      const date = new Date(year, month - 1, day);
-      if (!isNaN(date)) return date;
+      message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
-  }
-  return null;
-}
+
+    function showDetails(data) {
+      detailsPanel.style.display = "block";
+      detailsPanel.innerHTML = `
+        <h2>${data.Name || "Unknown"}</h2>
+        <p><b>Team:</b> ${data.Team || ""}</p>
+        <p><b>From:</b> ${data.From || ""}</p>
+        <p><b>To:</b> ${data.To || ""}</p>
+        <p><b>Comments:</b> ${data.Comments || ""}</p>
+      `;
+    }
+
+    function parseDateFlexible(str) {
+      if (!str) return null;
+      str = str.trim().replace(/\r|\n/g, "");
+
+      const formats = [
+        /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/, 
+        /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/,
+      ];
+
+      for (const f of formats) {
+        const m = str.match(f);
+        if (m) {
+          let [_, a, b, c] = m.map(x => x.trim());
+          let day, month, year;
+
+          if (f === formats[1]) {
+            year = +a; month = +b; day = +c;
+          } else {
+            if (c.length === 2) c = "20" + c;
+            day = +a; month = +b; year = +c;
+          }
+
+          const date = new Date(year, month - 1, day);
+          if (!isNaN(date)) return date;
+        }
+      }
+      return null;
+    }
+
+    function formatDateDisplay(date) {
+      return date.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+  </script>
+</body>
+</html>
