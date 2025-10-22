@@ -1,268 +1,30 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>IT Department Leave Tracker</title>
-  <style>
-    body {
-      font-family: system-ui, Arial, sans-serif;
-      background: #f5f6fa;
-      margin: 0;
-      padding: 20px;
-      color: #333;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      max-width: 900px;
-      margin: 0 auto 10px;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    h1 { margin: 0; font-size: 1.5rem; }
-    #date-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: #fff;
-      padding: 6px 12px;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
-    #date {
-      font-weight: bold;
-      color: #555;
-      font-size: 0.95rem;
-      border: none;
-      outline: none;
-      background: none;
-      cursor: pointer;
-    }
-    #cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 15px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
-    .card {
-      position: relative;
-      background: white;
-      padding: 15px;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .card:hover { transform: scale(1.03); }
-    .details {
-      display: none;
-      font-size: 0.9rem;
-      margin-top: 10px;
-      color: #555;
-    }
-    .card.active .details { display: block; }
+function parseDateFlexible(str) {
+  if (!str) return null;
+  str = str.trim().replace(/\r|\n/g, "");
+  
+  // Try multiple known date formats
+  const formats = [
+    /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/,  // 21/10/2025 or 21-10-25
+    /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/,    // 2025-10-21
+  ];
 
-    .badge {
-      position: absolute;
-      bottom: 8px;
-      right: 10px;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      font-size: 0.7rem;
-      font-weight: bold;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .badge.green { background: #28a745; } /* future */
-    .badge.orange { background: #f39c12; } /* ongoing */
-    .badge.red { background: #e74c3c; } /* past */
-
-    .warning {
-      color: #a33;
-      text-align: center;
-      margin-top: 12px;
-      white-space: pre-wrap;
-    }
-    #showing {
-      text-align: center;
-      color: #555;
-      margin-bottom: 15px;
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>IT Department Leave Tracker</h1>
-    <div id="date-container">
-      <input type="date" id="date" />
-      <button id="clearDate" style="border:none;background:#eee;padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
-    </div>
-  </header>
-
-  <div id="showing"></div>
-  <div id="cards">Loading leave data...</div>
-  <div id="message" class="warning"></div>
-
-  <script>
-    // Replace with your Google Sheet CSV link
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
-
-    const dateInput = document.getElementById("date");
-    const clearBtn = document.getElementById("clearDate");
-    const cardsContainer = document.getElementById("cards");
-    const message = document.getElementById("message");
-    const showing = document.getElementById("showing");
-    let allData = [];
-
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-
-    // --- Fetch data ---
-    fetch(sheetURL)
-      .then(r => r.text())
-      .then(text => {
-        let delimiter = ",";
-        if (text.includes("\t")) delimiter = "\t";
-        else if (text.includes(";")) delimiter = ";";
-
-        const rows = text.trim().split("\n").map(r => r.split(delimiter));
-        const headers = rows.shift().map(h => h.trim());
-        allData = rows.map(row =>
-          Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
-        );
-        renderCards();
-      })
-      .catch(err => {
-        cardsContainer.innerHTML = "Error loading data.";
-        console.error(err);
-      });
-
-    // --- Event listeners ---
-    dateInput.addEventListener("input", renderCards);
-    clearBtn.addEventListener("click", () => {
-      dateInput.value = "";
-      renderCards();
-    });
-
-    // --- Render cards ---
-    function renderCards() {
-      const selectedDateStr = dateInput.value;
-      const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
-      let skipped = 0;
-      let visibleCount = 0;
-
-      showing.textContent = selectedDate
-        ? "Showing leaves for " + formatDateDisplay(selectedDate)
-        : "Showing all current and upcoming leaves";
-
-      cardsContainer.innerHTML = "";
-
-      allData.forEach((data) => {
-        const fromDate = parseDateFlexible(data.From);
-        const toDate = parseDateFlexible(data.To);
-        if (!fromDate || !toDate) {
-          skipped++;
-          return;
-        }
-
-        let valid = true;
-        if (selectedDate) {
-          valid = selectedDate.getTime() >= fromDate.getTime() && selectedDate.getTime() <= toDate.getTime();
-        }
-
-        if (valid || !selectedDate) {
-          const card = document.createElement("div");
-          card.className = "card";
-
-          card.innerHTML = `
-            <strong>${data.Name || "Unknown"}</strong><br>
-            <span>${data.Team || ""}</span>
-            <div class="details">
-              <p><b>From:</b> ${data.From || ""}</p>
-              <p><b>To:</b> ${data.To || ""}</p>
-              <p><b>Comments:</b> ${data.Comments || ""}</p>
-            </div>
-          `;
-
-          if (!selectedDate) {
-            const badge = document.createElement("div");
-            const today = new Date();
-            const oneDay = 24 * 60 * 60 * 1000;
-
-            if (fromDate > today) {
-              badge.className = "badge green"; // future
-            } else if (today >= fromDate && today <= toDate) {
-              badge.className = "badge orange"; // ongoing
-              const daysLeft = Math.ceil((toDate - today) / oneDay);
-              badge.textContent = daysLeft;
-            } else if (toDate < today) {
-              badge.className = "badge red"; // past
-              const daysSince = Math.ceil((today - toDate) / oneDay);
-              badge.textContent = daysSince;
-            }
-
-            card.appendChild(badge);
-          }
-
-          card.addEventListener("click", () => {
-            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
-            card.classList.add("active");
-          });
-
-          cardsContainer.appendChild(card);
-          visibleCount++;
-        }
-      });
-
-      if (visibleCount === 0) {
-        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
-      }
-
-      message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
-    }
-
-    // --- Robust date parser ---
-    function parseDateFlexible(str) {
-      if (!str) return null;
-      str = str.replace(/\r|\n|[^0-9\/\-.]/g, "").trim();
-
-      const parts = str.split(/[-\/.]/);
-      if (parts.length < 3) return null;
-
+  for (const f of formats) {
+    const m = str.match(f);
+    if (m) {
+      let [_, a, b, c] = m.map(x => x.trim());
       let day, month, year;
-      if (parts[0].length === 4) {
-        [year, month, day] = parts;
-      } else if (+parts[1] > 12) {
-        [day, month, year] = [parts[1], parts[0], parts[2]];
-      } else {
-        [day, month, year] = parts;
-      }
 
-      day = parseInt(day, 10);
-      month = parseInt(month, 10);
-      year = parseInt(year, 10);
-      if (year < 100) year = 2000 + year;
+      if (f === formats[1]) {
+        year = +a; month = +b; day = +c;
+      } else {
+        // If year looks like '25' assume 2025
+        if (c.length === 2) c = "20" + c;
+        day = +a; month = +b; year = +c;
+      }
 
       const date = new Date(year, month - 1, day);
-      return isNaN(date.getTime()) ? null : date;
+      if (!isNaN(date)) return date;
     }
-
-    function formatDateDisplay(date) {
-      return date.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-      });
-    }
-  </script>
-</body>
-</html>
+  }
+  return null;
+}
