@@ -12,16 +12,19 @@
       padding: 20px;
       color: #333;
     }
+
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       max-width: 900px;
-      margin: 0 auto 10px;
+      margin: 0 auto 15px;
       flex-wrap: wrap;
       gap: 10px;
     }
+
     h1 { margin: 0; font-size: 1.5rem; }
+
     #date-container {
       display: flex;
       align-items: center;
@@ -31,6 +34,7 @@
       border-radius: 8px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.1);
     }
+
     #date {
       font-weight: bold;
       color: #555;
@@ -40,6 +44,36 @@
       background: none;
       cursor: pointer;
     }
+
+    button {
+      border: none;
+      background: #eee;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .tab {
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: #ddd;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .tab.active {
+      background: #0078d7;
+      color: white;
+      font-weight: bold;
+    }
+
     #cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -47,156 +81,127 @@
       max-width: 900px;
       margin: 0 auto;
     }
+
     .card {
+      position: relative;
       background: white;
       padding: 15px;
       border-radius: 10px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       cursor: pointer;
       transition: 0.2s;
-      position: relative;
     }
+
     .card:hover { transform: scale(1.03); }
+
     .details {
       display: none;
       font-size: 0.9rem;
       margin-top: 10px;
       color: #555;
     }
+
     .card.active .details { display: block; }
-    .warning {
-      color: #a33;
-      text-align: center;
-      margin-top: 12px;
-      white-space: pre-wrap;
-    }
+
     #showing {
       text-align: center;
       color: #555;
       margin-bottom: 15px;
     }
 
-    /* Dot indicator styles */
     .dot {
       position: absolute;
-      bottom: 8px;
+      bottom: 10px;
       right: 10px;
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      color: white;
       font-size: 11px;
+      font-weight: bold;
+      color: white;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: bold;
     }
-    .dot.green { background-color: #4CAF50; }  /* future */
-    .dot.orange { background-color: #FFA500; } /* ongoing */
 
-    /* Tabs */
-    .tabs {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 20px;
-      gap: 10px;
-    }
-    .tab {
-      background: #e0e0e0;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .tab.active {
-      background: #007bff;
-      color: white;
-    }
+    .dot.green { background: #1cc88a; }  /* future */
+    .dot.orange { background: #f6c23e; } /* current */
+    .dot.red { background: #e74a3b; }    /* past */
   </style>
 </head>
+
 <body>
   <header>
     <h1>IT Department Leave Tracker</h1>
     <div id="date-container">
       <input type="date" id="date" />
-      <button id="clearDate" style="border:none;background:#eee;padding:4px 8px;border-radius:6px;cursor:pointer;">Clear</button>
+      <button id="clearDate">Clear</button>
     </div>
   </header>
 
   <div class="tabs">
-    <button id="tab-current" class="tab active">Current & Upcoming</button>
-    <button id="tab-past" class="tab">Past Leaves</button>
+    <div class="tab active" data-tab="current">Current & Upcoming</div>
+    <div class="tab" data-tab="past">Past Leaves</div>
   </div>
 
   <div id="showing"></div>
   <div id="cards">Loading leave data...</div>
-  <div id="message" class="warning"></div>
+  <div id="message" style="text-align:center;color:#a33;margin-top:12px;"></div>
 
   <script>
-    const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
+    const sheetURL =
+      "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
     const clearBtn = document.getElementById("clearDate");
     const cardsContainer = document.getElementById("cards");
-    const message = document.getElementById("message");
     const showing = document.getElementById("showing");
-    const tabCurrent = document.getElementById("tab-current");
-    const tabPast = document.getElementById("tab-past");
+    const message = document.getElementById("message");
+    const tabs = document.querySelectorAll(".tab");
 
     let allData = [];
     let activeTab = "current";
 
-    // Today's date
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    // --- Fetch data ---
     fetch(sheetURL)
-      .then(r => r.text())
-      .then(text => {
+      .then((r) => r.text())
+      .then((text) => {
         let delimiter = ",";
         if (text.includes("\t")) delimiter = "\t";
         else if (text.includes(";")) delimiter = ";";
 
-        const rows = text.trim().split("\n").map(r => r.split(delimiter));
-        const headers = rows.shift().map(h => h.trim());
-        allData = rows.map(row =>
+        const rows = text.trim().split("\n").map((r) => r.split(delimiter));
+        const headers = rows.shift().map((h) => h.trim());
+        allData = rows.map((row) =>
           Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
         );
         renderCards();
       })
-      .catch(err => {
+      .catch((err) => {
         cardsContainer.innerHTML = "Error loading data.";
         console.error(err);
       });
 
-    // --- Event listeners ---
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        activeTab = tab.dataset.tab;
+        renderCards();
+      });
+    });
+
     dateInput.addEventListener("input", renderCards);
     clearBtn.addEventListener("click", () => {
       dateInput.value = "";
       renderCards();
     });
 
-    tabCurrent.addEventListener("click", () => {
-      activeTab = "current";
-      tabCurrent.classList.add("active");
-      tabPast.classList.remove("active");
-      renderCards();
-    });
-
-    tabPast.addEventListener("click", () => {
-      activeTab = "past";
-      tabPast.classList.add("active");
-      tabCurrent.classList.remove("active");
-      renderCards();
-    });
-
-    // --- Render cards ---
     function renderCards() {
       const selectedDateStr = dateInput.value;
       const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
@@ -205,9 +210,9 @@
 
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
-        : (activeTab === "past"
-            ? "Showing all past leaves"
-            : "Showing current and upcoming leaves");
+        : activeTab === "past"
+        ? "Showing past leaves"
+        : "Showing all current and upcoming leaves";
 
       cardsContainer.innerHTML = "";
 
@@ -219,20 +224,17 @@
           return;
         }
 
-        const isPast = now > toDate;
-        const isOngoing = now >= fromDate && now <= toDate;
-        const isFuture = now < fromDate;
+        const isPast = toDate < now;
+        const isCurrentUpcoming = toDate >= now;
 
         let show = false;
-
-        // --- Selection logic corrected ---
         if (selectedDate) {
-          const isInRange = selectedDate >= fromDate && selectedDate <= toDate;
-          if (activeTab === "past" && isInRange && toDate < now) show = true;
-          else if (activeTab === "current" && isInRange && toDate >= now) show = true;
+          const inRange = selectedDate >= fromDate && selectedDate <= toDate;
+          if (activeTab === "past" && inRange && isPast) show = true;
+          if (activeTab === "current" && inRange && isCurrentUpcoming) show = true;
         } else {
-          if (activeTab === "past") show = isPast;
-          else show = isOngoing || isFuture;
+          if (activeTab === "past" && isPast) show = true;
+          if (activeTab === "current" && isCurrentUpcoming) show = true;
         }
 
         if (show) {
@@ -248,19 +250,25 @@
             </div>
           `;
 
-          if (!selectedDate && activeTab === "current") {
-            const dot = document.createElement("div");
-            if (isOngoing) {
-              dot.className = "dot orange";
-              dot.textContent = daysBetween(toDate, now);
-            } else if (isFuture) {
-              dot.className = "dot green";
-            }
-            if (dot.className) card.appendChild(dot);
+          // --- Dot logic (based on TODAY, always visible) ---
+          const dot = document.createElement("div");
+          dot.classList.add("dot");
+          const daysDiff = Math.round((toDate - now) / (1000 * 60 * 60 * 24));
+
+          if (now < fromDate) {
+            dot.classList.add("green");
+            dot.textContent = "";
+          } else if (now >= fromDate && now <= toDate) {
+            dot.classList.add("orange");
+            dot.textContent = Math.max(0, Math.round((toDate - now) / (1000 * 60 * 60 * 24)));
+          } else if (toDate < now && activeTab !== "past") {
+            dot.classList.add("red");
+            dot.textContent = Math.abs(Math.round((now - toDate) / (1000 * 60 * 60 * 24)));
           }
 
+          card.appendChild(dot);
           card.addEventListener("click", () => {
-            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
+            document.querySelectorAll(".card.active").forEach((c) => c.classList.remove("active"));
             card.classList.add("active");
           });
 
@@ -269,38 +277,47 @@
         }
       });
 
-      if (visibleCount === 0) {
-        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found.</p>";
-      }
+      if (visibleCount === 0)
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
 
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // --- Helper Functions ---
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.trim().replace(/\r|\n/g, "");
-      const parts = str.split(/[-\/\.]/);
-      if (parts.length < 3) return null;
-      let [d, m, y] = parts.map(p => p.trim());
-      d = +d; m = +m;
-      if (y.length === 2) y = "20" + y;
-      const year = +y;
-      if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
-      return new Date(year, m - 1, d);
+      const formats = [
+        /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/,
+        /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/,
+      ];
+      for (const f of formats) {
+        const m = str.match(f);
+        if (m) {
+          let [_, a, b, c] = m.map((x) => x.trim());
+          let day, month, year;
+          if (f === formats[1]) {
+            year = +a;
+            month = +b;
+            day = +c;
+          } else {
+            if (c.length === 2) c = "20" + c;
+            day = +a;
+            month = +b;
+            year = +c;
+          }
+          const date = new Date(year, month - 1, day);
+          if (!isNaN(date)) return date;
+        }
+      }
+      return null;
     }
 
     function formatDateDisplay(date) {
       return date.toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",
-        year: "numeric"
+        year: "numeric",
       });
-    }
-
-    function daysBetween(date1, date2) {
-      const diffTime = date1.getTime() - date2.getTime();
-      return Math.round(diffTime / (1000 * 60 * 60 * 24));
     }
   </script>
 </body>
