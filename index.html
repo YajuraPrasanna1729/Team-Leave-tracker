@@ -93,7 +93,27 @@
     }
     .dot.green { background-color: #4CAF50; }  /* future */
     .dot.orange { background-color: #FFA500; } /* ongoing */
-    .dot.red { background-color: #E53935; }    /* past */
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+      gap: 10px;
+    }
+    .tab {
+      background: #e0e0e0;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .tab.active {
+      background: #007bff;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -105,12 +125,16 @@
     </div>
   </header>
 
+  <div class="tabs">
+    <button id="tab-current" class="tab active">Current & Upcoming</button>
+    <button id="tab-past" class="tab">Past Leaves</button>
+  </div>
+
   <div id="showing"></div>
   <div id="cards">Loading leave data...</div>
   <div id="message" class="warning"></div>
 
   <script>
-    // --- Google Sheet CSV link ---
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
@@ -118,7 +142,11 @@
     const cardsContainer = document.getElementById("cards");
     const message = document.getElementById("message");
     const showing = document.getElementById("showing");
+    const tabCurrent = document.getElementById("tab-current");
+    const tabPast = document.getElementById("tab-past");
+
     let allData = [];
+    let activeTab = "current";
 
     // Today's date
     const now = new Date();
@@ -154,6 +182,20 @@
       renderCards();
     });
 
+    tabCurrent.addEventListener("click", () => {
+      activeTab = "current";
+      tabCurrent.classList.add("active");
+      tabPast.classList.remove("active");
+      renderCards();
+    });
+
+    tabPast.addEventListener("click", () => {
+      activeTab = "past";
+      tabPast.classList.add("active");
+      tabCurrent.classList.remove("active");
+      renderCards();
+    });
+
     // --- Render cards ---
     function renderCards() {
       const selectedDateStr = dateInput.value;
@@ -163,7 +205,9 @@
 
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
-        : "Showing all current and upcoming leaves";
+        : (activeTab === "past"
+            ? "Showing all past leaves"
+            : "Showing current and upcoming leaves");
 
       cardsContainer.innerHTML = "";
 
@@ -175,12 +219,20 @@
           return;
         }
 
-        let valid = true;
+        let show = false;
+        const isPast = now > toDate;
+        const isOngoing = now >= fromDate && now <= toDate;
+        const isFuture = now < fromDate;
+
         if (selectedDate) {
-          valid = selectedDate >= fromDate && selectedDate <= toDate;
+          show = selectedDate >= fromDate && selectedDate <= toDate;
+        } else if (activeTab === "current") {
+          show = isOngoing || isFuture;
+        } else if (activeTab === "past") {
+          show = isPast;
         }
 
-        if (valid || !selectedDate) {
+        if (show) {
           const card = document.createElement("div");
           card.className = "card";
           card.innerHTML = `
@@ -193,29 +245,16 @@
             </div>
           `;
 
-          // --- Show colored dot only in default (no selected date) mode ---
-          if (!selectedDate) {
+          if (!selectedDate && activeTab === "current") {
             const dot = document.createElement("div");
-            const diffStart = daysBetween(now, fromDate);
-            const diffEnd = daysBetween(toDate, now);
-            let dotClass = "", label = "";
-
-            if (now < fromDate) {
-              dotClass = "green"; // future
-              label = "";
-            } else if (now >= fromDate && now <= toDate) {
-              dotClass = "orange"; // ongoing
-              label = diffEnd; // days left
-            } else if (now > toDate) {
-              dotClass = "red"; // past
-              label = diffStart * -1; // days since return
+            if (isOngoing) {
+              dot.className = "dot orange";
+              dot.textContent = daysBetween(toDate, now);
+            } else if (isFuture) {
+              dot.className = "dot green";
+              dot.textContent = "";
             }
-
-            if (dotClass) {
-              dot.className = "dot " + dotClass;
-              dot.textContent = label;
-              card.appendChild(dot);
-            }
+            if (dot.className) card.appendChild(dot);
           }
 
           card.addEventListener("click", () => {
@@ -228,7 +267,7 @@
       });
 
       if (visibleCount === 0) {
-        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
+        cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found.</p>";
       }
 
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
@@ -263,3 +302,4 @@
   </script>
 </body>
 </html>
+
