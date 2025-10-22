@@ -48,13 +48,13 @@
       margin: 0 auto;
     }
     .card {
-      position: relative;
       background: white;
       padding: 15px;
       border-radius: 10px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       cursor: pointer;
       transition: 0.2s;
+      position: relative;
     }
     .card:hover { transform: scale(1.03); }
     .details {
@@ -64,28 +64,36 @@
       color: #555;
     }
     .card.active .details { display: block; }
+    .warning {
+      color: #a33;
+      text-align: center;
+      margin-top: 12px;
+      white-space: pre-wrap;
+    }
     #showing {
       text-align: center;
       color: #555;
       margin-bottom: 15px;
     }
-    .badge {
+
+    /* Dot indicator styles */
+    .dot {
       position: absolute;
       bottom: 8px;
-      right: 8px;
+      right: 10px;
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      font-size: 10px;
-      font-weight: bold;
       color: white;
+      font-size: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
+      font-weight: bold;
     }
-    .badge.green { background: #22c55e; }
-    .badge.orange { background: #f59e0b; }
-    .badge.red { background: #ef4444; }
+    .dot.green { background-color: #4CAF50; }  /* future */
+    .dot.orange { background-color: #FFA500; } /* ongoing */
+    .dot.red { background-color: #E53935; }    /* past */
   </style>
 </head>
 <body>
@@ -99,23 +107,25 @@
 
   <div id="showing"></div>
   <div id="cards">Loading leave data...</div>
+  <div id="message" class="warning"></div>
 
   <script>
+    // --- Google Sheet CSV link ---
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
     const dateInput = document.getElementById("date");
     const clearBtn = document.getElementById("clearDate");
     const cardsContainer = document.getElementById("cards");
+    const message = document.getElementById("message");
     const showing = document.getElementById("showing");
     let allData = [];
 
-    // --- Today's date ---
+    // Today's date
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
-    const today = new Date(todayStr + "T00:00:00");
 
     // --- Fetch data ---
     fetch(sheetURL)
@@ -127,9 +137,9 @@
 
         const rows = text.trim().split("\n").map(r => r.split(delimiter));
         const headers = rows.shift().map(h => h.trim());
-        allData = rows
-          .map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""])))
-          .filter(d => d.Name && d.From && d.To); // skip blanks
+        allData = rows.map(row =>
+          Object.fromEntries(headers.map((h, i) => [h, row[i] ? row[i].trim() : ""]))
+        );
         renderCards();
       })
       .catch(err => {
@@ -137,7 +147,7 @@
         console.error(err);
       });
 
-    // --- Events ---
+    // --- Event listeners ---
     dateInput.addEventListener("input", renderCards);
     clearBtn.addEventListener("click", () => {
       dateInput.value = "";
@@ -148,101 +158,94 @@
     function renderCards() {
       const selectedDateStr = dateInput.value;
       const selectedDate = selectedDateStr ? new Date(selectedDateStr + "T00:00:00") : null;
-      cardsContainer.innerHTML = "";
+      let skipped = 0;
+      let visibleCount = 0;
 
       showing.textContent = selectedDate
         ? "Showing leaves for " + formatDateDisplay(selectedDate)
         : "Showing all current and upcoming leaves";
 
+      cardsContainer.innerHTML = "";
+
       allData.forEach((data) => {
         const fromDate = parseDateFlexible(data.From);
         const toDate = parseDateFlexible(data.To);
-        if (!fromDate || !toDate) return;
-
-        let valid = !selectedDate || (selectedDate >= fromDate && selectedDate <= toDate);
-        if (!valid) return;
-
-        const card = document.createElement("div");
-        card.className = "card";
-        card.innerHTML = `
-          <strong>${data.Name || "Unknown"}</strong><br>
-          <span>${data.Team || ""}</span>
-          <div class="details">
-            <p><b>From:</b> ${data.From || ""}</p>
-            <p><b>To:</b> ${data.To || ""}</p>
-            <p><b>Comments:</b> ${data.Comments || ""}</p>
-          </div>
-        `;
-
-        // 🟢 Badge logic – show only in default view
-        if (!selectedDate) {
-          const badge = document.createElement("div");
-          badge.className = "badge";
-
-          if (fromDate > today) {
-            // Future leave
-            badge.classList.add("green");
-          } else if (today >= fromDate && today <= toDate) {
-            // On leave now
-            badge.classList.add("orange");
-            const daysLeft = Math.ceil((toDate - today) / (1000 * 60 * 60 * 24));
-            badge.textContent = daysLeft;
-          } else if (toDate < today) {
-            // Past leave
-            badge.classList.add("red");
-            const daysSince = Math.ceil((today - toDate) / (1000 * 60 * 60 * 24));
-            badge.textContent = daysSince;
-          }
-          card.appendChild(badge);
+        if (!fromDate || !toDate) {
+          skipped++;
+          return;
         }
 
-        card.addEventListener("click", () => {
-          document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
-          card.classList.add("active");
-        });
+        let valid = true;
+        if (selectedDate) {
+          valid = selectedDate >= fromDate && selectedDate <= toDate;
+        }
 
-        cardsContainer.appendChild(card);
+        if (valid || !selectedDate) {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            <strong>${data.Name || "Unknown"}</strong><br>
+            <span>${data.Team || ""}</span>
+            <div class="details">
+              <p><b>From:</b> ${data.From || ""}</p>
+              <p><b>To:</b> ${data.To || ""}</p>
+              <p><b>Comments:</b> ${data.Comments || ""}</p>
+            </div>
+          `;
+
+          // --- Show colored dot only in default (no selected date) mode ---
+          if (!selectedDate) {
+            const dot = document.createElement("div");
+            const diffStart = daysBetween(now, fromDate);
+            const diffEnd = daysBetween(toDate, now);
+            let dotClass = "", label = "";
+
+            if (now < fromDate) {
+              dotClass = "green"; // future
+              label = "";
+            } else if (now >= fromDate && now <= toDate) {
+              dotClass = "orange"; // ongoing
+              label = diffEnd; // days left
+            } else if (now > toDate) {
+              dotClass = "red"; // past
+              label = diffStart * -1; // days since return
+            }
+
+            if (dotClass) {
+              dot.className = "dot " + dotClass;
+              dot.textContent = label;
+              card.appendChild(dot);
+            }
+          }
+
+          card.addEventListener("click", () => {
+            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+          });
+          cardsContainer.appendChild(card);
+          visibleCount++;
+        }
       });
 
-      if (!cardsContainer.hasChildNodes()) {
+      if (visibleCount === 0) {
         cardsContainer.innerHTML = "<p style='text-align:center;color:#777;'>No leaves found for selected date.</p>";
       }
+
+      message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
     }
 
-    // --- Helpers ---
+    // --- Helper Functions ---
     function parseDateFlexible(str) {
       if (!str) return null;
       str = str.trim().replace(/\r|\n/g, "");
-
-      const numericFormats = [
-        /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/,
-        /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/
-      ];
-      for (const f of numericFormats) {
-        const m = str.match(f);
-        if (m) {
-          let [_, a, b, c] = m.map(x => x.trim());
-          let day, month, year;
-          if (f === numericFormats[1]) { year = +a; month = +b; day = +c; }
-          else { if (c.length === 2) c = "20" + c; day = +a; month = +b; year = +c; }
-          const date = new Date(year, month - 1, day);
-          if (!isNaN(date)) return date;
-        }
-      }
-
-      // Text month (21-Oct-2025)
-      const textMonthMatch = str.match(/^(\d{1,2})[\s\-\/]?([A-Za-z]+)[\s\-\/]?(\d{2,4})$/);
-      if (textMonthMatch) {
-        let [_, d, monStr, y] = textMonthMatch;
-        const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
-        const mIndex = months.findIndex(m => monStr.toLowerCase().startsWith(m));
-        if (mIndex >= 0) {
-          if (y.length === 2) y = "20" + y;
-          const date = new Date(+y, mIndex, +d);
-          if (!isNaN(date)) return date;
-        }
-      }
-      return null;
+      const parts = str.split(/[-\/\.]/);
+      if (parts.length < 3) return null;
+      let [d, m, y] = parts.map(p => p.trim());
+      d = +d; m = +m;
+      if (y.length === 2) y = "20" + y;
+      const year = +y;
+      if (isNaN(d) || isNaN(m) || isNaN(year)) return null;
+      return new Date(year, m - 1, d);
     }
 
     function formatDateDisplay(date) {
@@ -251,6 +254,11 @@
         month: "short",
         year: "numeric"
       });
+    }
+
+    function daysBetween(date1, date2) {
+      const diffTime = date1.getTime() - date2.getTime();
+      return Math.round(diffTime / (1000 * 60 * 60 * 24));
     }
   </script>
 </body>
