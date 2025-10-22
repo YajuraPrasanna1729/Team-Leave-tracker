@@ -57,6 +57,30 @@
       position: relative;
     }
     .card:hover { transform: scale(1.03); }
+    .details {
+      display: none;
+      font-size: 0.9rem;
+      margin-top: 10px;
+      color: #555;
+    }
+    .card.active .details { display: block; }
+    .badge {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: white;
+    }
+    .badge.green { background: #27ae60; }  /* upcoming */
+    .badge.orange { background: #e67e22; } /* ongoing */
+    .badge.red { background: #c0392b; }    /* past */
     .warning {
       color: #a33;
       text-align: center;
@@ -67,37 +91,6 @@
       text-align: center;
       color: #555;
       margin-bottom: 15px;
-    }
-    /* ✅ Colored date tag at card bottom-right */
-    .date-tag {
-      position: absolute;
-      bottom: 10px;
-      right: 12px;
-      font-weight: bold;
-      font-size: 0.9rem;
-    }
-    .date-tag.green { color: green; }
-    .date-tag.red { color: red; }
-    .date-tag.orange { color: orange; }
-
-    /* Selected details section */
-    #selected-details {
-      max-width: 900px;
-      margin: 30px auto;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      padding: 20px;
-      display: none;
-      animation: fadeIn 0.3s ease-in-out;
-    }
-    #selected-details h2 {
-      margin-top: 0;
-      color: #444;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
@@ -114,12 +107,6 @@
   <div id="cards">Loading leave data...</div>
   <div id="message" class="warning"></div>
 
-  <!-- 🆕 Selected details section -->
-  <div id="selected-details">
-    <h2>Selected Person Details</h2>
-    <div id="details-content">Click a card to see details here.</div>
-  </div>
-
   <script>
     const sheetURL = "https://docs.google.com/spreadsheets/d/1k7XSPXOzPdNDf-l0k-rtawf49X6yJ5lapIBofXnPu5s/export?format=csv";
 
@@ -128,13 +115,9 @@
     const cardsContainer = document.getElementById("cards");
     const message = document.getElementById("message");
     const showing = document.getElementById("showing");
-    const selectedDetails = document.getElementById("selected-details");
-    const detailsContent = document.getElementById("details-content");
-
     let allData = [];
 
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
@@ -176,7 +159,6 @@
         : "Showing all current and upcoming leaves";
 
       cardsContainer.innerHTML = "";
-      selectedDetails.style.display = "none";
 
       allData.forEach((data) => {
         const fromDate = parseDateFlexible(data.From);
@@ -188,7 +170,7 @@
 
         let valid = true;
         if (selectedDate) {
-          valid = selectedDate.getTime() >= fromDate.getTime() && selectedDate.getTime() <= toDate.getTime();
+          valid = selectedDate >= fromDate && selectedDate <= toDate;
         }
 
         if (valid || !selectedDate) {
@@ -197,21 +179,39 @@
           card.innerHTML = `
             <strong>${data.Name || "Unknown"}</strong><br>
             <span>${data.Team || ""}</span>
+            <div class="details">
+              <p><b>From:</b> ${data.From || ""}</p>
+              <p><b>To:</b> ${data.To || ""}</p>
+              <p><b>Comments:</b> ${data.Comments || ""}</p>
+            </div>
           `;
 
-          // ✅ Add color-coded date tag
-          const tag = document.createElement("div");
-          tag.classList.add("date-tag");
-          tag.textContent = data.From ? data.From : "";
+          // ✅ Only show badges in "All cards" view
+          if (!selectedDate) {
+            const badge = document.createElement("div");
+            badge.classList.add("badge");
 
-          const from = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
-          if (from.getTime() > today.getTime()) tag.classList.add("green");
-          else if (from.getTime() < today.getTime()) tag.classList.add("red");
-          else tag.classList.add("orange");
+            const daysDiffStart = Math.floor((fromDate - now) / (1000 * 60 * 60 * 24));
+            const daysDiffEnd = Math.floor((toDate - now) / (1000 * 60 * 60 * 24));
 
-          card.appendChild(tag);
+            if (daysDiffStart > 0) {
+              badge.classList.add("green"); // future
+            } else if (daysDiffStart <= 0 && daysDiffEnd >= 0) {
+              badge.classList.add("orange"); // current
+              badge.textContent = daysDiffEnd;
+            } else if (daysDiffEnd < 0) {
+              badge.classList.add("red"); // past
+              badge.textContent = Math.abs(daysDiffEnd);
+            }
 
-          card.addEventListener("click", () => showDetails(data));
+            card.appendChild(badge);
+          }
+
+          card.addEventListener("click", () => {
+            document.querySelectorAll(".card.active").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+          });
+
           cardsContainer.appendChild(card);
           visibleCount++;
         }
@@ -222,18 +222,6 @@
       }
 
       message.textContent = skipped > 0 ? `${skipped} row(s) skipped due to invalid dates.` : "";
-    }
-
-    function showDetails(data) {
-      selectedDetails.style.display = "block";
-      detailsContent.innerHTML = `
-        <p><b>Name:</b> ${data.Name || "Unknown"}</p>
-        <p><b>Team:</b> ${data.Team || ""}</p>
-        <p><b>From:</b> ${data.From || ""}</p>
-        <p><b>To:</b> ${data.To || ""}</p>
-        <p><b>Comments:</b> ${data.Comments || "—"}</p>
-      `;
-      selectedDetails.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     function parseDateFlexible(str) {
